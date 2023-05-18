@@ -5,6 +5,8 @@
 #    source folder (this is the folder that has options.mk in it)
 LIBRARY_DIR=../../itensor
 
+EIGEN=../eigen
+
 # 3. If your 'main' function is in a file called 'myappname.cc', then
 #    set APP to 'myappname'. Running 'make' will compile the app.
 #    Running 'make debug' will make a program called 'myappname-g'
@@ -37,7 +39,7 @@ GOBJECTS=$(patsubst %,.debug_objs/%, $(OBJECTS))
 #Rules ------------------
 
 %.o: %.cc $(HEADERS) $(TENSOR_HEADERS)
-	$(CCCOM) -c $(CCFLAGS) -o $@ $<
+	$(CCCOM) -I $(EIGEN) -c $(CCFLAGS) -o $@ $<
 
 .debug_objs/%.o: %.cc $(HEADERS) $(TENSOR_HEADERS)
 	$(CCCOM) -c $(CCGFLAGS) -o $@ $<
@@ -51,7 +53,7 @@ $(APP): $(OBJECTS) $(ITENSOR_LIBS)
 	$(CCCOM) $(CCFLAGS) $(OBJECTS) -o $(APP) $(LIBFLAGS)
 
 $(APP)-g: mkdebugdir $(GOBJECTS) $(ITENSOR_GLIBS)
-	$(CCCOM) $(CCGFLAGS) $(GOBJECTS) -o $(APP)-g $(LIBGFLAGS)
+	$(CCCOM) -I $(EIGEN) $(CCGFLAGS) $(GOBJECTS) -o $(APP)-g $(LIBGFLAGS)
 
 clean:
 	rm -fr .debug_objs *.o $(APP) $(APP)-g
