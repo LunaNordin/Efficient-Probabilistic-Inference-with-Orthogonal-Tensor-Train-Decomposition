@@ -1,5 +1,4 @@
-#include "itensor/all.h"
-#include <Eigen/Dense>
+#include "generate_symmetric.h"
 
 using namespace itensor;
 using Eigen::MatrixXf;
@@ -18,6 +17,8 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
     auto A_i = ITensor(i);
     // create tensor for output
     auto T = ITensor();
+
+    // TODO: make sure the matrix of eigenvectors fits the rank and dimension of the generated vector
 
     // sum over all additive parts
     for(int n=1; n <= rank; n++) {
@@ -82,6 +83,9 @@ MatrixXf generate_orthogonal_set(int n, int m) {
         println("ERROR: Generated orthogonal matrix with high numeric error.");
         return MatrixXf();
     }
+
+    // TODO: add multiplication with random factors to generate tensors with values outside [-1,1]
+
     // return the genrated matrix
     return Q;
 }
