@@ -88,23 +88,23 @@ MatrixXf generate_orthogonal_set(int n, int m) {
 
 /**
  * Generates a symmetric, odeco tansor train (MPS)
- * rank: rank of the tensor represented by the mps (number of carriages)
+ * rank: rank of the tensor represented by the mps (number of carriages - 2 due to two visible indices at the ends)
  * dim: dimension of the indices of the represented tensor (and all carriages)
  * return: mps representing a tensor with specified rank and dimensions
 */
 MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
 
-    // iniitalise an empty train for rank many carriages
-    auto train = MPS(rank);
+    // initialise an empty train for rank - 2 many carriages
+    auto train = MPS(rank - 2);
 
     // indices used to connect the carriages of the train
     auto bond_1 = Index(dim);
     auto bond_2 = Index(dim);
 
     // generate each carriage
-    for(int i=1; i <= rank; i++) {
+    for(int i=1; i <= rank - 2; i++) {
         // create an symmetric, odeco tensor
-        MatrixXf base = generate_orthogonal_set(dim, rank);
+        MatrixXf base = generate_orthogonal_set(dim, rank - 2);
         auto carriage = generate_symmetric_odeco_tensor(3, dim, base);
 
         // find the indices of the carriages marked as bonds
@@ -118,7 +118,7 @@ MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
         // the carriages at the end of the train only share one bond but have two visible indices
         if(i == 1) {
             carriage = addTags(carriage,"visible2",bond_1);
-        } else if (i == rank){
+        } else if (i == rank - 2){
            carriage = addTags(carriage,"visible2",bond_2);
         }
         
@@ -134,46 +134,74 @@ MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
     return train;
 }
 
+/**
+ * Contracts a tensor train into the represented tensor
+ * train: tensor train to be contracted
+ * return: tensor represented by the tensor train
+*/
+ITensor contract_tensor_train(MPS train) {
+
+    // set output tensor to first tensor in mps
+    auto T = train.ref(1);;
+
+    // contract all carriages
+    for(int i = 2; i <= train.length(); i++) {
+        // get the next carriage
+        auto S = train.ref(i);
+
+        // automatically contract over the shared index
+        T *= S;
+    }
+    // remove all tags (all indices are visible now)
+    T = noTags(T);
+    // return the contracted tensor
+    return T;
+}
+
 int main(){
 
     // initialize seed for random number generation
     srand((unsigned int) time(0));
 
-    println("Test with known eigenvectors:");
-    /**
-     * Test algorithm with matrix of eigenvectors:
-     * 2 -4  0
-     * 4  2  0
-     * 0  0  5
-     * Result for this test is known.
-    */
-    MatrixXf M1 = MatrixXf(3,3);
-    M1(0,0) = 2;
-    M1(1,0) = 4;
-    M1(2,0) = 0;
-    M1(0,1) = -4;
-    M1(1,1) = 2;
-    M1(2,1) = 0;
-    M1(0,2) = 0;
-    M1(1,2) = 0;
-    M1(2,2) = 5;
-    println(M1);
-    auto S1 = generate_symmetric_odeco_tensor(3, 3, M1);
-    PrintData(S1);
+    // println("Test with known eigenvectors:");
+    // /**
+    //  * Test algorithm with matrix of eigenvectors:
+    //  * 2 -4  0
+    //  * 4  2  0
+    //  * 0  0  5
+    //  * Result for this test is known.
+    // */
+    // MatrixXf M1 = MatrixXf(3,3);
+    // M1(0,0) = 2;
+    // M1(1,0) = 4;
+    // M1(2,0) = 0;
+    // M1(0,1) = -4;
+    // M1(1,1) = 2;
+    // M1(2,1) = 0;
+    // M1(0,2) = 0;
+    // M1(1,2) = 0;
+    // M1(2,2) = 5;
+    // println(M1);
+    // auto S1 = generate_symmetric_odeco_tensor(3, 3, M1);
+    // PrintData(S1);
 
-    println("============================================");
+    // println("============================================");
 
-    println("Test with unknown eigenvectors:");
-    MatrixXf M2 = generate_orthogonal_set(3, 3);
-    println(M2);
-    auto S2 = generate_symmetric_odeco_tensor(3, 3, M2);
-    PrintData(S2);
+    // println("Test with unknown eigenvectors:");
+    // MatrixXf M2 = generate_orthogonal_set(3, 3);
+    // println(M2);
+    // auto S2 = generate_symmetric_odeco_tensor(3, 3, M2);
+    // PrintData(S2);
 
-    println("============================================");
+    // println("============================================");
 
     println("Generate a symmetric tensor train:");
-    auto train = generate_symmetric_odeco_tensor_train(5, 3);
+    auto train = generate_symmetric_odeco_tensor_train(4, 6);
     PrintData(train);
+
+    println("Represented tensor:");
+    auto T = contract_tensor_train(train);
+    PrintData(T);
 
     return 0;
 }
