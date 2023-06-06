@@ -12,4 +12,6 @@ itensor::MPS generate_symmetric_odeco_tensor_train(int rank, int dim);
 
 itensor::ITensor contract_tensor_train(itensor::MPS train);
 
+int test_generation();
+
 #endif

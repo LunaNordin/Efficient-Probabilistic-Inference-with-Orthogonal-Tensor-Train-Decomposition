@@ -84,7 +84,10 @@ MatrixXf generate_orthogonal_set(int n, int m) {
         return MatrixXf();
     }
 
-    // TODO: add multiplication with random factors to generate tensors with values outside [-1,1]
+    // TODO: add multiplication with random factors to generate tensors with values outside [0,1]
+
+    // shift from generated range of [-1,1] to [0,1] for working with probabilities
+    Q = Q.cwiseAbs();
 
     // return the genrated matrix
     return Q;
@@ -162,7 +165,10 @@ ITensor contract_tensor_train(MPS train) {
     return T;
 }
 
-int main(){
+/**
+ * Used to test the generation of symmetric tensors and tensor trains
+*/
+int test_generation(){
 
     // initialize seed for random number generation
     srand((unsigned int) time(0));
