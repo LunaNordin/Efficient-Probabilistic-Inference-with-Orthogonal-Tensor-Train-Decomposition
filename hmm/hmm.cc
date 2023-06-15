@@ -30,23 +30,58 @@ HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim) {
     // contract that tensor train and also save the contracted emission tensor
     model.emission_tensor = contract_tensor_train(model.emission_mps);
 
+    // add the initial state to the model
+    model.initial_state = generate_state(visibleVariables, visibleDim);
+
+    // return the generated model
+    return model;
+}
+
+/**
+ * Generates a sequence of random states which can be used as evidence.
+ * visibleVariables: Number of values in each state
+ * visibleDim: value range of each state component
+ * length: number of generated states
+ * return: array of states in form of rank-1 ITensors
+*/
+ITensor* generate_state_sequence(int visibleVariables, int visibleDim, int length) {
+    // set up an array of ITensors to hold the state sequence
+    ITensor* sequence = new ITensor[length];
+
+    // generate lenght many states
+    for (int i = 1; i <= length; i++) {
+        // generate a random state
+        ITensor state = generate_state(visibleVariables, visibleDim);
+        // add the state to the sequence
+        sequence[i-1] = state;
+    }
+    // return the generated state sequence
+    return sequence;
+}
+
+/**
+ * Generates a random state for a model with specified parameters.
+ * visibleVariables: number of variables for which there are states to be generated
+ * visibleDim: dimension of the variables is range for number generation
+ * return: ITensor of rank 1 and specified dimensions containing generated state
+*/
+ITensor generate_state(int visibleVariables, int visibleDim) {
     // set up a random number generator
     std::random_device rd;
     std::mt19937 rng(rd());
     std::uniform_int_distribution<int> uni(1,visibleDim);
-    // create a vector (rank-1 tensor) for the initial state
+
+    // create a vector (rank-1 tensor) for the state
     auto l = Index(visibleVariables);
     auto state = ITensor(l);
-    // fill the state vector with random values from the visible dimension value range
-    for (int i = 1; i <= visibleVariables; i++) {
-        auto random = uni(rng);
-        state.set(l = i, random);
-    }
-    // add the initial state to the model
-    model.initial_state = state;
 
-    // return the generated model
-    return model;
+    // fill the state vector with random values from the dimension value range
+    for (int j = 1; j <= visibleVariables; j++) {
+        auto random = uni(rng);
+        state.set(l = j, random);
+    }
+    // return the generated state
+    return state;
 }
 
 int main() {
@@ -63,6 +98,12 @@ int main() {
 
     println("Initial state:");
     PrintData(model.initial_state);
+
+    println("Random state sequence:");
+    auto sequence = generate_state_sequence(model.visibleVariables, model.visibleDimension, 4);
+    for (int i = 0; i < 4; i++) {
+        PrintData(sequence[i]);
+    }
 
     return 0;
 }
