@@ -2,7 +2,11 @@
 #define __HMM_H_
 
 #include "itensor/all.h"
+#include "../symmetric_tensor/generate_symmetric.h"
 #include <random>
+#include <vector>
+#include <iostream>
+
 
 class HMM {
   public:
@@ -13,13 +17,16 @@ class HMM {
     itensor::MPS emission_mps;
     itensor::ITensor emission_tensor;
     itensor::ITensor transition;
-    itensor::ITensor initial_state;
+    std::vector<int> initial_state;
+    itensor::ITensor initial_hidden_probability;
 };
 
 HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim);
 
-itensor::ITensor generate_state(int visibleVariables, int visibleDim);
+std::vector<int> generate_state(int visibleVariables, int visibleDim);
 
-itensor::ITensor* generate_state_sequence(int visibleVariables, int visibleDim, int length);
+std::vector<int>* generate_state_sequence(int visibleVariables, int visibleDim, int length);
+
+int test_hmm();
 
 #endif
