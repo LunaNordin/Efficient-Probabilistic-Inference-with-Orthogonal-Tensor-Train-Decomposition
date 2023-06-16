@@ -90,6 +90,38 @@ vector<int> generate_state(int visibleVariables, int visibleDim) {
 }
 
 /**
+ * Calculates estimated memory usage for the representation of an HMM and reports if it can be stored in system memory
+ * total_variables: total number of variables (hidden and visible)
+ * dimension: dimension of the variables
+ * return: 1 if representation exceeds memory limit, 0 else
+*/
+int has_critical_memory_demand(int total_variables, int dimension) {
+    float system_memory = 16.0;
+
+    // number of bytes of the tensor
+    float tensor_size_bytes = (pow(dimension, total_variables)) * sizeof(long);
+    // size in GB of the tensor
+    float tensor_size_gigabytes = tensor_size_bytes / float(pow(10, 9));
+
+    // number of bytes of the mps
+    float train_size_bytes = (total_variables*dimension*pow(dimension, 2)) * sizeof(long);
+    // size in GB of the mps
+    float train_size_gigabytes = train_size_bytes / float(pow(10, 9));
+
+    // total size of mps
+    float total_size = tensor_size_gigabytes + train_size_gigabytes;
+        
+    // return if system memory is sufficient
+    if(total_size >= system_memory) {
+        // size is greater than system memory
+        return 1;
+    } else {
+        // size is smaller than system memory
+        return 0;
+    }
+}
+
+/**
  * Used to test the generation of hmms
 */
 int test_hmm() {

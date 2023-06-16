@@ -51,3 +51,7 @@
 
 # VSCode
 *.vscode
+
+# measured performance data
+*.csv
+

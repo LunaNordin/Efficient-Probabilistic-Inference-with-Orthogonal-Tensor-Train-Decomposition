@@ -78,13 +78,83 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
     return alpha_t;
 }
 
+/**
+ * Automatically collects runtime data for the different algorithms with varying parameters
+*/
+void collect_data_forward_algorithm() {
 
+    // test parameters
+    int min_rank = 4;
+    int max_rank = 8;
+    int min_dimension = 2;
+    int max_dimension = 20;
+
+    int length = 100;
+
+    // variables used during testing
+    HMM model;
+    vector<int>* evidence;
+    ITensor a_posteriori_probabilities;
+
+    // create a new output file or open an existing one
+    fstream fout;
+    fout.open("forward_algorithm_recursive_tensor.csv", ios::out | ios::app);
+
+    // write header line with column titels for the dimensions to file
+    fout << ",";
+    for(int k = min_dimension; k <= max_dimension; k++) {
+        fout << k << ",";
+    }
+    fout << "\n";
+
+    // go through every possible combination of rank and dimension
+    for(int rank = min_rank; rank <= max_rank; rank++) {
+
+        fout << rank << ",";
+
+        for(int dimension = min_dimension; dimension <= max_dimension; dimension++) {
+            
+
+            // if the combination of rank and dimension needs too much memors start testing the next rank
+            if(has_critical_memory_demand(rank, dimension)) {
+                break;
+            }
+
+            // generate a new model and an evidence sequence
+            model = generate_hmm(dimension, rank-1, dimension);
+            evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
+
+            // perform the algortihm while measuring the runtime
+            auto t1 = high_resolution_clock::now();
+            a_posteriori_probabilities = forward_alg_tensor(model, evidence, length);
+            auto t2 = high_resolution_clock::now();
+
+            // write the measured runtime to the file
+            duration<double, std::milli> ms_double = t2 - t1;
+            fout << ms_double.count() << ",";
+
+            // clear all data structures of this run to make sure memory limit wont be exceeded
+            delete[] evidence;
+            model = HMM();
+            a_posteriori_probabilities = ITensor();
+            // experimental: give the system some time to clear the deallocated memory while this thread sleeps
+            // sleep(1);
+
+        }
+        // start the next line for the next rank
+        fout << "\n";
+    }
+    // in case the program runs twice without the file being reset the new values will just be written underneith
+    fout << "\n";
+}
 
 int main() {
 
-    HMM model = generate_hmm(20, 4, 20);
-    int length = 100;
-    vector<int>* evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
+    collect_data_forward_algorithm();
+
+    // HMM model = generate_hmm(20, 4, 20);
+    // int length = 100;
+    // vector<int>* evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
 
     // println("Initial hidden probabilities:");
     // PrintData(model.initial_hidden_probability);
@@ -96,14 +166,14 @@ int main() {
     // }
     // cout << "\n\n";
 
-    auto t1 = high_resolution_clock::now();
-    ITensor a_posteriori_probabilities = forward_alg_tensor(model, evidence, length);
-    auto t2 = high_resolution_clock::now();
+    // auto t1 = high_resolution_clock::now();
+    // ITensor a_posteriori_probabilities = forward_alg_tensor(model, evidence, length);
+    // auto t2 = high_resolution_clock::now();
 
-    duration<double, std::milli> ms_double = t2 - t1;
-    std::cout << ms_double.count() << "ms\n";
+    // duration<double, std::milli> ms_double = t2 - t1;
+    // std::cout << ms_double.count() << "ms\n";
 
-    delete[] evidence;
+    // delete[] evidence;
 
     // println("A posteriori probabilities:");
     // PrintData(a_posteriori_probabilities);

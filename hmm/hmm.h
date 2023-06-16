@@ -27,6 +27,8 @@ std::vector<int> generate_state(int visibleVariables, int visibleDim);
 
 std::vector<int>* generate_state_sequence(int visibleVariables, int visibleDim, int length);
 
+int has_critical_memory_demand(int total_variables, int dimension);
+
 int test_hmm();
 
 #endif
