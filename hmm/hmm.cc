@@ -96,7 +96,7 @@ vector<int> generate_state(int visibleVariables, int visibleDim) {
  * return: 1 if representation exceeds memory limit, 0 else
 */
 int has_critical_memory_demand(int total_variables, int dimension) {
-    float system_memory = 16.0;
+    float system_memory = 12.0;
 
     // number of bytes of the tensor
     float tensor_size_bytes = (pow(dimension, total_variables)) * sizeof(long);

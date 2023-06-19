@@ -1,5 +1,4 @@
 #include "forward_algorithm.h"
-#include <vector>
 
 using namespace itensor;
 using namespace std;
@@ -81,15 +80,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
 /**
  * Automatically collects runtime data for the different algorithms with varying parameters
 */
-void collect_data_forward_algorithm() {
-
-    // test parameters
-    int min_rank = 4;
-    int max_rank = 8;
-    int min_dimension = 2;
-    int max_dimension = 20;
-
-    int length = 100;
+void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimension, int max_dimension, int length, int repetitions) {
 
     // variables used during testing
     HMM model;
@@ -97,60 +88,137 @@ void collect_data_forward_algorithm() {
     ITensor a_posteriori_probabilities;
 
     // create a new output file or open an existing one
-    fstream fout;
-    fout.open("forward_algorithm_recursive_tensor.csv", ios::out | ios::app);
+    ofstream fout_results;
+    fout_results.open("forward_algorithm_recursive_tensor.csv", ios::out | ios::app);
+
+    ofstream fout_error;
+    fout_error.open("forward_algorithm_recursive_tensor_error.csv", ios::out | ios::app);
+
+    ofstream fout_rel_error;
+    fout_rel_error.open("forward_algorithm_recursive_tensor_rel_error.csv", ios::out | ios::app);
+
+    // write test parameters to file
+    fout_results << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
+    << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
+    fout_error << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
+    << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
+    fout_rel_error << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
+    << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
 
     // write header line with column titels for the dimensions to file
-    fout << ",";
+    fout_results << ",";
+    fout_error << ",";
+    fout_rel_error << ",";
     for(int k = min_dimension; k <= max_dimension; k++) {
-        fout << k << ",";
+        fout_results << k << ",";
+        fout_error << k << ",";
+        fout_rel_error << k << ",";
     }
-    fout << "\n";
+    fout_results << "\n";
+    fout_error << "\n";
+    fout_rel_error << "\n";
 
     // go through every possible combination of rank and dimension
     for(int rank = min_rank; rank <= max_rank; rank++) {
 
-        fout << rank << ",";
+        fout_results << rank << ",";
+        fout_error << rank << ",";
+        fout_rel_error << rank << ",";
 
+        cout << "Measuring runtime for Tensors of rank: " << rank << endl; 
+
+        // test all possible dimensions for the current rank
         for(int dimension = min_dimension; dimension <= max_dimension; dimension++) {
             
-
             // if the combination of rank and dimension needs too much memors start testing the next rank
             if(has_critical_memory_demand(rank, dimension)) {
+                fout_results << "\n";
+                fout_error << "\n";
+                fout_rel_error << "\n";
                 break;
             }
 
-            // generate a new model and an evidence sequence
-            model = generate_hmm(dimension, rank-1, dimension);
-            evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
+            // array to save the result of each run
+            float results[repetitions];
 
-            // perform the algortihm while measuring the runtime
-            auto t1 = high_resolution_clock::now();
-            a_posteriori_probabilities = forward_alg_tensor(model, evidence, length);
-            auto t2 = high_resolution_clock::now();
+            // repeat measurement with identical parameters
+            for(int i = 0; i < repetitions; i++) {
+                // generate a new model and an evidence sequence
+                model = generate_hmm(dimension, rank-1, dimension);
+                evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
+
+                // perform the algortihm while measuring the runtime
+                auto t1 = high_resolution_clock::now();
+                a_posteriori_probabilities = forward_alg_tensor(model, evidence, length);
+                auto t2 = high_resolution_clock::now();
+
+                // save the measured result
+                duration<double, std::milli> ms_double = t2 - t1;
+                results[i] = ms_double.count();
+
+                // clear all data structures of this run to make sure memory limit wont be exceeded
+                delete[] evidence;
+                model = HMM();
+                a_posteriori_probabilities = ITensor();
+                
+                // experimental: give the system some time to clear the deallocated memory while this thread sleeps
+                sleep(1);
+            }
+
+            // calculate mean of results
+            float mean = arithmetic_mean(results, repetitions);
+            // claculate standard error of results
+            float error = standard_mean_error(results, repetitions);
+            // claculate relative error of results
+            float rel_error = error / mean;
+
+            // print results to console
+            cout << "dimension: " << dimension << " mean: " << mean << " error: " << error << " rel. error: " << rel_error << endl;
 
             // write the measured runtime to the file
-            duration<double, std::milli> ms_double = t2 - t1;
-            fout << ms_double.count() << ",";
-
-            // clear all data structures of this run to make sure memory limit wont be exceeded
-            delete[] evidence;
-            model = HMM();
-            a_posteriori_probabilities = ITensor();
-            // experimental: give the system some time to clear the deallocated memory while this thread sleeps
-            // sleep(1);
-
+            fout_results << mean << "," << flush;
+            fout_error << error << "," << flush;
+            fout_rel_error << rel_error << "," << flush;
         }
         // start the next line for the next rank
-        fout << "\n";
+        fout_results << "\n";
+        fout_error << "\n";
+        fout_rel_error << "\n";
     }
     // in case the program runs twice without the file being reset the new values will just be written underneith
-    fout << "\n";
+    fout_results << "\n";
+    fout_error << "\n";
+    fout_rel_error << "\n";
+    // close the file
+    fout_results.close();
+    fout_error.close();
+    fout_rel_error.close();
+}
+
+float arithmetic_mean(float data[], int n) {
+    // loop to calculate sum of array elements.
+    float sum = 0;
+    for (int i = 0; i < n; i++) {
+        sum = sum + data[i];
+    }
+     
+    // calculate mean
+    return sum / n;
+}
+
+float standard_mean_error(float data[], int n) {
+    float sum = 0;  
+    float mean = arithmetic_mean(data, n);
+    for (int i = 0; i < n; i++) {
+        sum = sum + pow((data[i] - mean),2);
+    }
+    sum = sum * (1/(float(n)-1));
+    return sqrt(sum);
 }
 
 int main() {
 
-    collect_data_forward_algorithm();
+    collect_data_forward_algorithm(4, 10, 2, 100, 100, 10);
 
     // HMM model = generate_hmm(20, 4, 20);
     // int length = 100;
