@@ -54,4 +54,5 @@
 
 # measured performance data
 *.csv
+!/data_analysis/**/*.csv
 
