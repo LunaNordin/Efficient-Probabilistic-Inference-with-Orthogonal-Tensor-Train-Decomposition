@@ -78,7 +78,13 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
 }
 
 /**
- * Automatically collects runtime data for the different algorithms with varying parameters
+ * Automatically collects runtime data for the different algorithms with varying parameters and saves data to files
+ * min_rank: lowest investigated rank
+ * max_rank: highest investigated rank
+ * min_dimension: lowest investigated dimension
+ * max_dimension: highest investigated dimension
+ * length: evidence sequence timesteps
+ * repetitions: number of repetitions with identical parameters
 */
 void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimension, int max_dimension, int length, int repetitions) {
 
@@ -87,7 +93,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     vector<int>* evidence;
     ITensor a_posteriori_probabilities;
 
-    // create a new output file or open an existing one
+    // create a new output files or open the existing ones
     ofstream fout_results;
     fout_results.open("forward_algorithm_recursive_tensor.csv", ios::out | ios::app);
 
@@ -97,7 +103,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     ofstream fout_rel_error;
     fout_rel_error.open("forward_algorithm_recursive_tensor_rel_error.csv", ios::out | ios::app);
 
-    // write test parameters to file
+    // write test parameters to files
     fout_results << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
     fout_error << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
@@ -105,7 +111,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     fout_rel_error << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
 
-    // write header line with column titels for the dimensions to file
+    // write header line with column titels for the dimensions to files
     fout_results << ",";
     fout_error << ",";
     fout_rel_error << ",";
@@ -175,7 +181,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
             // print results to console
             cout << "dimension: " << dimension << " mean: " << mean << " error: " << error << " rel. error: " << rel_error << endl;
 
-            // write the measured runtime to the file
+            // write the measured runtime to the files
             fout_results << mean << "," << flush;
             fout_error << error << "," << flush;
             fout_rel_error << rel_error << "," << flush;
@@ -185,16 +191,22 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
         fout_error << "\n";
         fout_rel_error << "\n";
     }
-    // in case the program runs twice without the file being reset the new values will just be written underneith
+    // in case the program runs twice without the files being reset the new values will just be written underneith
     fout_results << "\n";
     fout_error << "\n";
     fout_rel_error << "\n";
-    // close the file
+    // close the files
     fout_results.close();
     fout_error.close();
     fout_rel_error.close();
 }
 
+/**
+ * Calculates the arithmetic mean of the given data sequence
+ * data: array with values
+ * n: number of values
+ * return: arithmetic mean of data sequence
+*/
 float arithmetic_mean(float data[], int n) {
     // loop to calculate sum of array elements.
     float sum = 0;
@@ -202,23 +214,32 @@ float arithmetic_mean(float data[], int n) {
         sum = sum + data[i];
     }
      
-    // calculate mean
+    // return calculated mean
     return sum / n;
 }
 
+/**
+ * Calculates standard error for the arithmetic mean of the given data sequence
+ * data: array with values
+ * n: number of values
+ * return: standard error for arithmetic mean
+*/
 float standard_mean_error(float data[], int n) {
-    float sum = 0;  
+    float sum = 0;
+    // calculate mean
     float mean = arithmetic_mean(data, n);
+    // calculate standard deviation
     for (int i = 0; i < n; i++) {
         sum = sum + pow((data[i] - mean),2);
     }
+    // calculate and return standard error
     sum = sum * (1/(float(n)-1));
     return sqrt(sum);
 }
 
 int main() {
 
-    collect_data_forward_algorithm(4, 10, 2, 100, 100, 10);
+    collect_data_forward_algorithm(4, 10, 2, 100, 500, 10);
 
     // HMM model = generate_hmm(20, 4, 20);
     // int length = 100;
