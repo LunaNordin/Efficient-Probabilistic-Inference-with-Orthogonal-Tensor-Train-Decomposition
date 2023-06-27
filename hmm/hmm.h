@@ -29,6 +29,10 @@ std::vector<int>* generate_state_sequence(int visibleVariables, int visibleDim, 
 
 int has_critical_memory_demand(int total_variables, int dimension);
 
+itensor::Real get_component_from_tensor_train(itensor::MPS train, std::vector<int> evidence);
+
+itensor::Real get_component_from_tensor_train_with_ckeck(HMM model, std::vector<int> evidence);
+
 int test_hmm();
 
 #endif

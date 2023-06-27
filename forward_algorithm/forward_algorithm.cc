@@ -239,33 +239,9 @@ float standard_mean_error(float data[], int n) {
 
 int main() {
 
-    collect_data_forward_algorithm(4, 10, 2, 100, 500, 10);
+    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10);
 
-    // HMM model = generate_hmm(20, 4, 20);
-    // int length = 100;
-    // vector<int>* evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
-
-    // println("Initial hidden probabilities:");
-    // PrintData(model.initial_hidden_probability);
-
-    // println("Random state sequence:");
-    // for (int i = 0; i < length; i++) {
-    //     copy(evidence[i].begin(), evidence[i].end(), ostream_iterator<int>(cout, " "));
-    //     cout << "  "; 
-    // }
-    // cout << "\n\n";
-
-    // auto t1 = high_resolution_clock::now();
-    // ITensor a_posteriori_probabilities = forward_alg_tensor(model, evidence, length);
-    // auto t2 = high_resolution_clock::now();
-
-    // duration<double, std::milli> ms_double = t2 - t1;
-    // std::cout << ms_double.count() << "ms\n";
-
-    // delete[] evidence;
-
-    // println("A posteriori probabilities:");
-    // PrintData(a_posteriori_probabilities);
+    test_hmm();
 
     return 0;
 }

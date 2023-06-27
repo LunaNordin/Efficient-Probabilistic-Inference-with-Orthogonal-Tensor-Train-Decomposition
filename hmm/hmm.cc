@@ -122,6 +122,115 @@ int has_critical_memory_demand(int total_variables, int dimension) {
 }
 
 /**
+ * Calculates a component in a tensor from its MPS representation for a given set of indices
+ * train: tensor train representation of a tensor
+ * evidence: list of indices (evidence in case of an HMM, visible state at first place) specifying a component in the tensor
+ * return: component corresponding to the given indices
+*/
+Real get_component_from_tensor_train(MPS train, vector<int> evidence) {
+
+    // TODO: make sure length of evidence sequence matches number of visible variables in train
+
+    // absorb the evidence in every carraige of the train
+    for(int i = 1; i <= length(train); i++) {
+
+        ITensor prev_carriage;          // carriage at position before the current carriage in the train
+        ITensor curr_carriage;          // carriage the current position in the train
+        ITensor next_carriage;          // carriage at position after the current carriage in the train
+        vector<ITensor> neighbours;     // vector containing existing neighborus (one or two)
+        IndexSet bond_left;             // set containing the left bond_index (if it exists)
+        IndexSet bond_right;            // set containing the right bond_index (if it exists)
+
+        // get the current carriage
+        curr_carriage = train.ref(i);
+        // if a left neighbour exists (not at the left end of the train)
+        if(i != 1) {
+            // get the left neighbour carriage
+            prev_carriage = train.ref(i-1);
+            // add the carriage to the set of existing neighbours
+            neighbours.push_back(prev_carriage);
+            // get the index shared between the current carriage and its left neighbour
+            bond_left = commonInds(curr_carriage, prev_carriage);
+        }
+        // if a right neighbour exists (not at the right end of the train)
+        if(i != length(train)) {
+            // get the right neighbour carriage
+            next_carriage = train.ref(i+1);
+            // add the carriage to the set of existing neighbours
+            neighbours.push_back(next_carriage);
+            // get the index shared between the current carriage and its right neighbour
+            bond_right = commonInds(curr_carriage, next_carriage);
+        }
+
+        // the visible indices are the only ones not shared with the existing neighbours (at least one, up to two)
+        auto visible_indices = uniqueInds(curr_carriage, neighbours);
+        // the hidden indices are the ones shared with the existing neighbours (at least one, up to two)
+        auto hidden_indices = IndexSet(bond_left, bond_right);
+
+        // create a new carriage only containing the bond indices
+        auto new_carriage = ITensor(hidden_indices);
+
+        // copy over all values which match the evidende to the new carriage
+        auto bond_1 = hidden_indices.front();   // there is always at least one bond index
+        auto visible_1 = visible_indices.front();   // there is always at least one visible index
+        // cycle over the one bond index which is sure to exist
+        for(int j = 1; j <= dim(bond_1); j++) {
+            // there might be a second bond index if the current carriage is not an end of the train
+            if(i != 1 && i != length(train)) {
+                auto bond_2 = hidden_indices.back();    // in the middle there are two bond indices
+                // cycle over the second bond index
+                for(int k = 1; k <= dim(bond_1); k++) {
+                    // get the field where the one visible index matches the given evidence
+                    auto field = curr_carriage.elt(visible_1 = evidence.at(i), bond_1 = j, bond_2 = k);
+                    // copy it over to the new tensor
+                    new_carriage.set(bond_1 = j, bond_2 = k, field);
+                }
+            } else if(i == 1) {
+                // first carriage in the train
+                auto visible_2 = visible_indices.back(); // at the ends there are two visible indices
+                // get the field where the two visible indices match the given evidence
+                auto field = curr_carriage.elt(visible_1 = evidence.at(i-1), visible_2 = evidence.at(i), bond_1 = j);
+                // copy it over to the new tensor
+                new_carriage.set(bond_1 = j, field);
+            } else {
+                // last carriage in the train
+                auto visible_2 = visible_indices.back(); // at the ends there are two visible indices
+                // get the field where the two visible indices match the given evidence
+                auto field = curr_carriage.elt(visible_1 = evidence.at(i), visible_2 = evidence.at(i+1), bond_1 = j);
+                // copy it over to the new tensor
+                new_carriage.set(bond_1 = j, field);
+            }
+        }
+        // replace the old carrige with the new carriage which has the evidence absorbed
+        train.set(i, new_carriage);
+    }
+
+    // contract the train to calculate the field from the tensor corresponding to the absorbed evidence
+    auto component = contract_tensor_train(train);
+    // return the single value from the rank-0 tensor
+    return component.elt();
+}
+
+/**
+ * Calculates a component in a tensor from its MPS representation for a given set of indices and makes sure the result matches the expected value
+ * model: HMM containing the tensor and the MPS representation 
+ * evidence: list of indices (evidence in case of an HMM, visible state at first place) specifying a component in the tensor
+ * return: component corresponding to the given indices or -1 if deviation from expected result is too high
+*/
+Real get_component_from_tensor_train_with_ckeck(HMM model, vector<int> evidence) {
+    double max_error = 0.00001;
+    auto component = get_component_from_tensor_train(model.emission_mps, evidence);
+    auto control = elt(model.emission_tensor, evidence);
+
+    if(abs(component - control) > max_error) {
+        println("Error: Component calculated from MPS representation does not match tensor component");
+        return -1;
+    }
+
+    return component;
+}
+
+/**
  * Used to test the generation of hmms
 */
 int test_hmm() {
@@ -135,6 +244,9 @@ int test_hmm() {
 
     println("Emission tensor:");
     PrintData(model.emission_tensor);
+
+    println("Emission tensor train:");
+    PrintData(model.emission_mps);
 
     println("Initial state:");
     auto state = model.initial_state;
@@ -150,7 +262,16 @@ int test_hmm() {
         copy(sequence[i].begin(), sequence[i].end(), ostream_iterator<int>(cout, " "));
         cout << "  "; 
     }
-    cout << "\n"; 
+    cout << "\n\n"; 
+
+    println("Get random component from train:");
+    auto rand_state = generate_state(model.visibleVariables + 1, model.visibleDimension);
+    auto component = get_component_from_tensor_train(model.emission_mps, rand_state);
+    print("Calculated from MPS: ");
+    println(component);
+    print("Taken from tensor: ");
+    println(elt(model.emission_tensor, rand_state));
+    get_component_from_tensor_train_with_ckeck(model, rand_state);
 
     return 0;
 }

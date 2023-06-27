@@ -101,6 +101,9 @@ MatrixXf generate_orthogonal_set(int n, int m) {
 */
 MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
 
+    // iniitalize random number generation
+    srand((unsigned int) time(0));
+
     // initialise an empty train for rank - 2 many carriages
     auto train = MPS(rank - 2);
 
