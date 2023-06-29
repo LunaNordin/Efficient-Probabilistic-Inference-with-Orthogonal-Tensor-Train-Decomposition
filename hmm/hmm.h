@@ -21,17 +21,24 @@ class HMM {
     itensor::ITensor initial_hidden_probability;
 };
 
-HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim);
+enum model_mode
+{
+    tensor, mps, both
+};
+
+HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim, model_mode mode);
 
 std::vector<int> generate_state(int visibleVariables, int visibleDim);
 
 std::vector<int>* generate_state_sequence(int visibleVariables, int visibleDim, int length);
 
-int has_critical_memory_demand(int total_variables, int dimension);
+int has_critical_memory_demand(int total_variables, int dimension, model_mode mode);
 
 itensor::Real get_component_from_tensor_train(itensor::MPS train, std::vector<int> evidence);
 
 itensor::Real get_component_from_tensor_train_with_ckeck(HMM model, std::vector<int> evidence);
+
+std::string mode_to_string(model_mode mode);
 
 int test_hmm();
 

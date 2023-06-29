@@ -8,9 +8,10 @@ using namespace std;
  * hiddenDim: dimension of the one hidden variable
  * visibleVariables: number of visible variables
  * visibleDim: dimension of all visible variables
+ * mode: which representation of the emission tensor to use (saves memory space if certain representations are not needed)
  * return: HMM object with specified number of varibales and dimensions as well as random values in transition, emision and initial state
 */
-HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim) {
+HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim, model_mode mode) {
     // model to be filled with data
     HMM model;
     
@@ -29,12 +30,20 @@ HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim) {
 
     // generate a symmetric, odeco tensor train as the mps representation of the emission tensor 
     // has rank of one more than number of visible variables because states of hidden variable are encoded as well
-    model.emission_mps = generate_symmetric_odeco_tensor_train(visibleVariables + 1, visibleDim);
-    // contract that tensor train and also save the contracted emission tensor
-    model.emission_tensor = contract_tensor_train(model.emission_mps);
+    auto emission_mps = generate_symmetric_odeco_tensor_train(visibleVariables + 1, visibleDim);
+    // set the mps representation if it is required
+    if(mode == mps || mode == both) {
+        model.emission_mps = emission_mps;
+    }
+
+    // set the tensor representation if it is required
+    if(mode == tensor || mode == both) {
+        // contract that tensor train and also save the contracted emission tensor
+        model.emission_tensor = contract_tensor_train(emission_mps);
+    }
 
     // add the initial state to the model
-    model.initial_state = generate_state(visibleVariables, visibleDim);
+    model.initial_state = generate_state(visibleVariables, visibleDim); 
     // add the initial probabilities of the hidden variable
     auto l = Index(hiddenDim);
     model.initial_hidden_probability = randomITensor(l);
@@ -93,9 +102,10 @@ vector<int> generate_state(int visibleVariables, int visibleDim) {
  * Calculates estimated memory usage for the representation of an HMM and reports if it can be stored in system memory
  * total_variables: total number of variables (hidden and visible)
  * dimension: dimension of the variables
- * return: 1 if representation exceeds memory limit, 0 else
+ * mode: which representation of the emission tensor is used
+ * return: 1 if representation exceeds memory limit, 1 if its greater than 75%, 0 else
 */
-int has_critical_memory_demand(int total_variables, int dimension) {
+int has_critical_memory_demand(int total_variables, int dimension, model_mode mode) {
     float system_memory = 12.0;
 
     // number of bytes of the tensor
@@ -109,11 +119,21 @@ int has_critical_memory_demand(int total_variables, int dimension) {
     float train_size_gigabytes = train_size_bytes / float(pow(10, 9));
 
     // total size of mps
-    float total_size = tensor_size_gigabytes + train_size_gigabytes;
+    float total_size = 0;
+    if(mode == mps) {
+        total_size = train_size_gigabytes;
+    } else if (mode == tensor) {
+        total_size = tensor_size_gigabytes;
+    } else if (mode == both) {
+        total_size = train_size_gigabytes + tensor_size_gigabytes;
+    }
         
     // return if system memory is sufficient
     if(total_size >= system_memory) {
         // size is greater than system memory
+        return 2;
+    } else if (total_size >= system_memory * 0.75){
+        // size is smaller than system memory but at least 75% of system memory
         return 1;
     } else {
         // size is smaller than system memory
@@ -218,16 +238,38 @@ Real get_component_from_tensor_train(MPS train, vector<int> evidence) {
  * return: component corresponding to the given indices or -1 if deviation from expected result is too high
 */
 Real get_component_from_tensor_train_with_ckeck(HMM model, vector<int> evidence) {
+    // maximum deviation from expected result allowed (some accuracy might be lost during calculation)
     double max_error = 0.00001;
+    // calculate component from MPS
     auto component = get_component_from_tensor_train(model.emission_mps, evidence);
+    // get expected component from tensor
     auto control = elt(model.emission_tensor, evidence);
-
+    // make sure the two are identical (within expected accuracy)
     if(abs(component - control) > max_error) {
+        // infrom user about deviation and return error value
         println("Error: Component calculated from MPS representation does not match tensor component");
         return -1;
     }
 
+    // return the calculated component
     return component;
+}
+
+/**
+ * Gives a string represenation for any model_mode value
+ * mode: mode to be converted to string
+ * return: name of the mode as a string
+*/
+string mode_to_string(model_mode mode)
+{
+    // TODO: replace this, its a maintenance nightmare
+    switch (mode)
+    {
+        case tensor:    return "tensor";
+        case mps:       return "mps";
+        case both:      return "both";
+        default:        return "unknown mode";
+    }
 }
 
 /**
@@ -235,7 +277,7 @@ Real get_component_from_tensor_train_with_ckeck(HMM model, vector<int> evidence)
 */
 int test_hmm() {
     // test the model generation
-    HMM model = generate_hmm(3, 4, 3);
+    HMM model = generate_hmm(3, 4, 3, both);
     println("Generated HMM with hidden dimension 3 and four hidden variables of dimension 3:");
     println("-------------------------------------------------------------------------------");
 

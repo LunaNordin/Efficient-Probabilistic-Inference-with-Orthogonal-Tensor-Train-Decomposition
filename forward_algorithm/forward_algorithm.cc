@@ -7,15 +7,16 @@ using std::chrono::duration;
 using std::chrono::milliseconds;
 
 /**
- * Wrapper funtion for starting a recursive forward algorithm run
+ * Wrapper function for starting a recursive forward algorithm run
  * model: model to perform the forward algorithm on
  * evidence: sequence of states
  * legth: length of the state sequence
+ * mode: which representation of the emission tensor to use
  * return: a posteriori probabilities for the given evidence
 */
-ITensor forward_alg_tensor(HMM model, vector<int>* evidence, int length) {
+ITensor forward_alg(HMM model, vector<int>* evidence, int length, model_mode mode) {
     
-    ITensor joint_hidden_probability = calculate_forward_message(model, evidence, length);
+    ITensor joint_hidden_probability = calculate_forward_message(model, evidence, length, mode);
 
     return joint_hidden_probability;
 }
@@ -25,9 +26,10 @@ ITensor forward_alg_tensor(HMM model, vector<int>* evidence, int length) {
  * model: model to perform the forward algorithm on
  * evidence: sequence of states
  * timestep: current step in the evidence sequence
+ * mode: which representation of the emission tensor to use
  * return: forward message of the current timestep
 */
-ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep) {
+ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep, model_mode mode) {
 
     // TODO: check that alpha_prior has dimension of hidden var
 
@@ -49,7 +51,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
     timestep_indices.insert(timestep_indices.begin(), 0);
 
     // revursive function call to calculate forward messages of prior timestep
-    ITensor alpha_prior = calculate_forward_message(model, evidence, timestep - 1);
+    ITensor alpha_prior = calculate_forward_message(model, evidence, timestep - 1, mode);
     
     // calculate the forward message for all possible values of the hidden variable
     for(int hidden_index = 1; hidden_index <= model.hiddenDimension; hidden_index++) {
@@ -57,7 +59,17 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
         timestep_indices.at(0) = hidden_index;
 
         // get the emission probability for the current visible state and hidden state
-        emission_value = elt(model.emission_tensor, timestep_indices);
+        if(mode == tensor) {
+            // directly from the tensor representation
+            emission_value = elt(model.emission_tensor, timestep_indices);
+        } else if(mode == mps) {
+            // calculated from the tensor train
+            emission_value = get_component_from_tensor_train(model.emission_mps, timestep_indices);
+        } else {
+            // modes like 'both' do not make sense during calculation
+            println("Error: Not a valid mode for forward message calculation.");
+            return ITensor();
+        }
 
         // value for result of sub-calculation
         float sum = 0;
@@ -85,8 +97,9 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
  * max_dimension: highest investigated dimension
  * length: evidence sequence timesteps
  * repetitions: number of repetitions with identical parameters
+ * mode: which representation of the emission tensor to use
 */
-void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimension, int max_dimension, int length, int repetitions) {
+void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimension, int max_dimension, int length, int repetitions, model_mode mode) {
 
     // variables used during testing
     HMM model;
@@ -95,16 +108,19 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
 
     // create a new output files or open the existing ones
     ofstream fout_results;
-    fout_results.open("forward_algorithm_recursive_tensor.csv", ios::out | ios::app);
+    string time_file_name = "forward_algorithm_recursive_" + mode_to_string(mode) + "_" + to_string(length) + ".csv";
+    fout_results.open(time_file_name, ios::out | ios::app);
 
     ofstream fout_error;
-    fout_error.open("forward_algorithm_recursive_tensor_error.csv", ios::out | ios::app);
+    auto error_file_name = "forward_algorithm_recursive_error_" + mode_to_string(mode) + "_" + to_string(length) + ".csv";
+    fout_error.open(error_file_name, ios::out | ios::app);
 
     ofstream fout_rel_error;
-    fout_rel_error.open("forward_algorithm_recursive_tensor_rel_error.csv", ios::out | ios::app);
+    auto rel_error_file_name = "forward_algorithm_recursive_rel_error_" + mode_to_string(mode) + "_" + to_string(length) + ".csv";
+    fout_rel_error.open(rel_error_file_name, ios::out | ios::app);
 
     // write test parameters to files
-    fout_results << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
+    fout_results << "model:" << mode_to_string(mode) << ",min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
     fout_error << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
@@ -124,6 +140,9 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     fout_error << "\n";
     fout_rel_error << "\n";
 
+    cout << "Runtime testing for HMM forward algorithm on " << mode_to_string(mode) << " respresentation with evidence sequences of length " 
+    << to_string(length) << " and " << to_string(repetitions) << " repetitions per run" << endl; 
+
     // go through every possible combination of rank and dimension
     for(int rank = min_rank; rank <= max_rank; rank++) {
 
@@ -137,7 +156,8 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
         for(int dimension = min_dimension; dimension <= max_dimension; dimension++) {
             
             // if the combination of rank and dimension needs too much memors start testing the next rank
-            if(has_critical_memory_demand(rank, dimension)) {
+            int memory_usage = has_critical_memory_demand(rank, dimension, mode);
+            if(memory_usage == 2) {
                 fout_results << "\n";
                 fout_error << "\n";
                 fout_rel_error << "\n";
@@ -149,13 +169,14 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
 
             // repeat measurement with identical parameters
             for(int i = 0; i < repetitions; i++) {
-                // generate a new model and an evidence sequence
-                model = generate_hmm(dimension, rank-1, dimension);
+                // generate a new model which only contains the tested representation
+                model = generate_hmm(dimension, rank-1, dimension, mode);
+                // generate a new evidence sequence
                 evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
 
                 // perform the algortihm while measuring the runtime
                 auto t1 = high_resolution_clock::now();
-                a_posteriori_probabilities = forward_alg_tensor(model, evidence, length);
+                a_posteriori_probabilities = forward_alg(model, evidence, length, mode);
                 auto t2 = high_resolution_clock::now();
 
                 // save the measured result
@@ -168,7 +189,9 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
                 a_posteriori_probabilities = ITensor();
                 
                 // experimental: give the system some time to clear the deallocated memory while this thread sleeps
-                sleep(1);
+                if(memory_usage == 1) {
+                    sleep(1);
+                }
             }
 
             // calculate mean of results
@@ -199,6 +222,8 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     fout_results.close();
     fout_error.close();
     fout_rel_error.close();
+
+    cout << "\n" << endl; 
 }
 
 /**
@@ -239,9 +264,30 @@ float standard_mean_error(float data[], int n) {
 
 int main() {
 
-    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10);
+    /**
+     * Thourough testing to gather data for analysis
+    */
+    // // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor
+    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, tensor);
+    // // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor
+    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, tensor);
 
-    test_hmm();
+    // // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train
+    collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps);
+    // // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor train
+    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, mps);
+
+    /**
+     * Quick testing to gather to try stuff out
+    */
+    // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor
+    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, tensor);
+
+    // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train
+    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 1, mps);
+
+    // test_generation();
+    // test_hmm();
 
     return 0;
 }
