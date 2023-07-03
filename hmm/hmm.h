@@ -23,7 +23,7 @@ class HMM {
 
 enum model_mode
 {
-    tensor, mps, both
+    tensor, mps, both_models
 };
 
 HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim, model_mode mode);

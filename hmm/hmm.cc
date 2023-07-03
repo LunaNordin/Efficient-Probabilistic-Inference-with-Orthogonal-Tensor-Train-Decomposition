@@ -32,12 +32,12 @@ HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim, model_mode
     // has rank of one more than number of visible variables because states of hidden variable are encoded as well
     auto emission_mps = generate_symmetric_odeco_tensor_train(visibleVariables + 1, visibleDim);
     // set the mps representation if it is required
-    if(mode == mps || mode == both) {
+    if(mode == mps || mode == both_models) {
         model.emission_mps = emission_mps;
     }
 
     // set the tensor representation if it is required
-    if(mode == tensor || mode == both) {
+    if(mode == tensor || mode == both_models) {
         // contract that tensor train and also save the contracted emission tensor
         model.emission_tensor = contract_tensor_train(emission_mps);
     }
@@ -124,7 +124,7 @@ int has_critical_memory_demand(int total_variables, int dimension, model_mode mo
         total_size = train_size_gigabytes;
     } else if (mode == tensor) {
         total_size = tensor_size_gigabytes;
-    } else if (mode == both) {
+    } else if (mode == both_models) {
         total_size = train_size_gigabytes + tensor_size_gigabytes;
     }
         
@@ -265,10 +265,10 @@ string mode_to_string(model_mode mode)
     // TODO: replace this, its a maintenance nightmare
     switch (mode)
     {
-        case tensor:    return "tensor";
-        case mps:       return "mps";
-        case both:      return "both";
-        default:        return "unknown mode";
+        case tensor:            return "tensor";
+        case mps:               return "mps";
+        case both_models:       return "both_models";
+        default:                return "unknown model_mode";
     }
 }
 
@@ -277,7 +277,7 @@ string mode_to_string(model_mode mode)
 */
 int test_hmm() {
     // test the model generation
-    HMM model = generate_hmm(3, 4, 3, both);
+    HMM model = generate_hmm(3, 4, 3, both_models);
     println("Generated HMM with hidden dimension 3 and four hidden variables of dimension 3:");
     println("-------------------------------------------------------------------------------");
 
