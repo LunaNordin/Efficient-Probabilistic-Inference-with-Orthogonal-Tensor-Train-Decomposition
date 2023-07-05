@@ -145,20 +145,30 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
 */
 double* calculate_emission_values_parallel(HMM model, vector<int>* evidence, int length) {
 
+    // TODO: implement dynamic number of threads
+
     // split the evidence sequence in half
-    int length_1 = length / 2;
-    int length_2 = length - length_1;
+    int half_1 = length / 2;
+    int half_2 = length - half_1;
+    int length_1 = half_1 / 2;
+    int length_2 = half_1 - length_1;
+    int length_3 = half_2 / 2;
+    int length_4 = half_2 - length_3;
 
     // create array for the calculated emission values
     double* emission_values = new double[length * model.hiddenDimension];
 
     // start one thread for each part of the evidence sequence which will fill the corresponding fields in the array for the emission values
     thread th1(calculate_emission_values, model, evidence, length_1, 0, emission_values);
-    thread th2(calculate_emission_values, model, evidence, length_2, length_1, emission_values);
+    thread th2(calculate_emission_values, model, evidence, length_2, 0+length_1, emission_values);
+    thread th3(calculate_emission_values, model, evidence, length_3, 0+length_1+length_2, emission_values);
+    thread th4(calculate_emission_values, model, evidence, length_4, 0+length_1+length_2+length_3, emission_values);
 
     // wait until both threads have finished
     th1.join();
     th2.join();
+    th3.join();
+    th4.join();
 
     // return the calculated emission values
     return emission_values;
@@ -248,9 +258,9 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     // write test parameters to files
     fout_results << "model:" << mode_to_string(mode) << ",parallelization:" << parallel_to_string(parallel) << ",min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
-    fout_error << "model:" << mode_to_string(mode) << ",parallelization:" << parallel_to_string(parallel) << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
+    fout_error << "model:" << mode_to_string(mode) << ",parallelization:" << parallel_to_string(parallel) << ",min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
-    fout_rel_error << "model:" << mode_to_string(mode) << ",parallelization:" << parallel_to_string(parallel) << "min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
+    fout_rel_error << "model:" << mode_to_string(mode) << ",parallelization:" << parallel_to_string(parallel) << ",min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
 
     // write header line with column titels for the dimensions to files
