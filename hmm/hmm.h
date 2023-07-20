@@ -10,15 +10,15 @@
 
 class HMM {
   public:
-    int visibleVariables;
-    int hiddenVariables;
-    int hiddenDimension;
-    int visibleDimension;
-    itensor::MPS emission_mps;
-    itensor::ITensor emission_tensor;
-    itensor::ITensor transition;
-    std::vector<int> initial_state;
-    itensor::ITensor initial_hidden_probability;
+    int visibleVariables;                             // number of visible variables
+    int hiddenVariables;                              // number of hidden variables (NOTE: alway 1 for now)   
+    int hiddenDimension;                              // dimension of hidden variable
+    int visibleDimension;                             // dimension of all visible variables (NOTE: equal to hiddenDimension for now)
+    itensor::MPS emission_mps;                        // MPS representation containing all emission probabilities
+    itensor::ITensor emission_tensor;                 // tensor representation containing all emission probabilities
+    itensor::ITensor transition;                      // matrix containing all transition probabilities
+    std::vector<int> initial_state;                   // vector containing initial states of the visible variables
+    itensor::ITensor initial_hidden_probability;      // rank-1 tensor containing the initial probabilities of the hidden states
 };
 
 enum model_mode
