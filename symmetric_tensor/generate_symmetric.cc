@@ -150,9 +150,9 @@ MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
  * return: tensor represented by the tensor train
 */
 ITensor contract_tensor_train(MPS train) {
-
+    
     // set output tensor to first tensor in mps
-    auto T = train.ref(1);;
+    auto T = train.ref(1);
 
     // contract all carriages
     for(int i = 2; i <= train.length(); i++) {
