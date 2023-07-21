@@ -143,38 +143,47 @@ int has_critical_memory_demand(int total_variables, int dimension, model_mode mo
 
 /**
  * Calculates a component in a tensor from its MPS representation for a given set of indices
- * train: tensor train representation of a tensor
+ * model: HMM containing the tensor and the MPS representation 
  * evidence: list of indices (evidence in case of an HMM, visible state at first place) specifying a component in the tensor
  * parallel: options for parallelization
  * return: component corresponding to the given indices
 */
-Real get_component_from_tensor_train(MPS train, vector<int> evidence, ParallelizationOpt parallel) {
-
+Real get_component_from_tensor_train(HMM model, vector<int> evidence, ParallelizationOpt parallel) {
     // TODO: make sure length of evidence sequence matches number of visible variables in train
+    
+    ITensor component;  // tensor which will contain the calculated emission value
     
     // absorb the evidence by removing all non-fitting fields from the mps
     if(parallel.mode == sequential || parallel.mode == parallel_evidence) {
         // no parallelization of evidence absorption
-        absorb_evidence(train, evidence, length(train), 1);
+        absorb_evidence(model, evidence, length(model.emission_mps), 1);
+
+        // contract the train to calculate the field from the tensor corresponding to the absorbed evidence
+        component = contract_tensor_train(model.emission_mps);
     } else if(parallel.mode == parallel_contraction || parallel.mode == both_parallel) {
         // split absorption of evidence into two threads
         
-        // split length of mps into two halfes
-        int length_1 = length(train) / 2;
-        int length_2 = length(train) - length_1;
+        // split length of mps into two halfs
+        int length_1 = length(model.emission_mps) / 2;
+        int length_2 = length(model.emission_mps) - length_1;
         // calculate start points for each of the threads
         int start_1 = 1;
         int start_2 = length_1 + 1;
         // start two threads, each of which will absorb the evidence in half of the carriages
-        thread th1(absorb_evidence, std::ref(train), evidence, length_1, start_1);
-        thread th2(absorb_evidence, std::ref(train), evidence, length_2, start_2);
+        thread th1(absorb_evidence, std::ref(model), evidence, length_1, start_1);
+        thread th2(absorb_evidence, std::ref(model), evidence, length_2, start_2);
         // wait until both threads have finished running
         th1.join();
         th2.join();
+        // start two threads that each multiply the carriage in one half of the train
+        auto contract_left_future = std::async(contract_tensor_train_parallel, model.emission_mps, length_1, start_1);
+        auto contract_right_future = std::async(contract_tensor_train_parallel, model.emission_mps, length_2, start_2);
+        // wait for both threads to return their results
+        auto contract_left = contract_left_future.get();
+        auto contract_right = contract_right_future.get();
+        // multiply the two contracted halfs to calculate the emission value
+        component = contract_left * contract_right;
     }
-
-    // contract the train to calculate the field from the tensor corresponding to the absorbed evidence
-    auto component = contract_tensor_train(train);
     
     // return the single value from the rank-0 tensor
     return component.elt();
@@ -187,11 +196,11 @@ Real get_component_from_tensor_train(MPS train, vector<int> evidence, Paralleliz
  * parallel: options for parallelization
  * return: component corresponding to the given indices or -1 if deviation from expected result is too high
 */
-Real get_component_from_tensor_train_with_ckeck(HMM model, vector<int> evidence, ParallelizationOpt parallel) {
+Real get_component_from_tensor_train_with_check(HMM model, vector<int> evidence, ParallelizationOpt parallel) {
     // maximum deviation from expected result allowed (some accuracy might be lost during calculation)
     double max_error = 0.00001;
     // calculate component from MPS
-    auto component = get_component_from_tensor_train(model.emission_mps, evidence, parallel);
+    auto component = get_component_from_tensor_train(model, evidence, parallel);
     // get expected component from tensor
     auto control = elt(model.emission_tensor, evidence);
     // make sure the two are identical (within expected accuracy)
@@ -207,12 +216,12 @@ Real get_component_from_tensor_train_with_ckeck(HMM model, vector<int> evidence,
 
 /**
  * Absorbs the given evidence on the specified section of the tensor train
- * train: tensor train representation of a tensor
+ * model: HMM containing the tensor and the MPS representation 
  * evidence: list of indices (evidence in case of an HMM, visible state at first place) specifying a component in the tensor
  * length: number of carriages to absorb the evidence into
  * start: index of carriage to start at
 */
-void absorb_evidence(MPS& train, vector<int> evidence, int length, int start) {
+void absorb_evidence(HMM& model, vector<int> evidence, int length, int start) {
     // absorb the evidence in every carraige of the train
     for(int i = 0; i < length; i++) {
 
@@ -224,20 +233,20 @@ void absorb_evidence(MPS& train, vector<int> evidence, int length, int start) {
         IndexSet bond_right;            // set containing the right bond_index (if it exists)
 
         // get the current carriage
-        curr_carriage = train.ref(start + i);
+        curr_carriage = model.getCarriageFromTrain(start + i);
         // if a left neighbour exists (not at the left end of the train)
         if(start + i != 1) {
             // get the left neighbour carriage
-            prev_carriage = train.ref(start + i - 1);
+            prev_carriage = model.getCarriageFromTrain(start + i - 1);
             // add the carriage to the set of existing neighbours
             neighbours.push_back(prev_carriage);
             // get the index shared between the current carriage and its left neighbour
             bond_left = commonInds(curr_carriage, prev_carriage);
         }
         // if a right neighbour exists (not at the right end of the train)
-        if(start + i != train.length()) {
+        if(start + i != model.emission_mps.length()) {
             // get the right neighbour carriage
-            next_carriage = train.ref(start + i + 1);
+            next_carriage = model.getCarriageFromTrain(start + i + 1);
             // add the carriage to the set of existing neighbours
             neighbours.push_back(next_carriage);
             // get the index shared between the current carriage and its right neighbour
@@ -258,7 +267,7 @@ void absorb_evidence(MPS& train, vector<int> evidence, int length, int start) {
         // cycle over the one bond index which is sure to exist
         for(int j = 1; j <= dim(bond_1); j++) {
             // there might be a second bond index if the current carriage is not an end of the train
-            if(start + i != 1 && start + i != train.length()) {
+            if(start + i != 1 && start + i != model.emission_mps.length()) {
                 auto bond_2 = hidden_indices.back();    // in the middle there are two bond indices
                 // cycle over the second bond index
                 for(int k = 1; k <= dim(bond_1); k++) {
@@ -284,7 +293,7 @@ void absorb_evidence(MPS& train, vector<int> evidence, int length, int start) {
             }
         }
         // replace the old carrige with the new carriage which has the evidence absorbed
-        train.set(start + i, new_carriage);
+        model.setTrainCarriage(start + i, new_carriage);
     }
 }
 
@@ -341,12 +350,12 @@ int test_hmm() {
 
     println("Get random component from train:");
     auto rand_state = generate_state(model.visibleVariables + 1, model.visibleDimension);
-    auto component = get_component_from_tensor_train(model.emission_mps, rand_state, ParallelizationOpt(sequential));
+    auto component = get_component_from_tensor_train(model, rand_state, ParallelizationOpt(sequential));
     print("Calculated from MPS: ");
     println(component);
     print("Taken from tensor: ");
     println(elt(model.emission_tensor, rand_state));
-    get_component_from_tensor_train_with_ckeck(model, rand_state, ParallelizationOpt(sequential));
+    get_component_from_tensor_train_with_check(model, rand_state, ParallelizationOpt(sequential));
 
     return 0;
 }

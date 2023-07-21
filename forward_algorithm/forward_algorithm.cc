@@ -101,7 +101,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
                 emission_value = elt(model.emission_tensor, timestep_indices);
             } else if(mode == mps) {
                 // calculated from the tensor train
-                emission_value = get_component_from_tensor_train(model.emission_mps, timestep_indices, parallel);
+                emission_value = get_component_from_tensor_train(model, timestep_indices, parallel);
             } else {
                 // modes like 'both' do not make sense during calculation
                 println("Error: Not a valid mode for forward message calculation.");
@@ -112,7 +112,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
             emission_value = emission_values[(timestep - 1) * model.hiddenDimension + (hidden_index - 1)];
         } else if(parallel.mode == parallel_contraction) {
             // calculated from the tensor train (actually function call does not differ between sequential mps and mps with parallel contraction)
-            emission_value = get_component_from_tensor_train(model.emission_mps, timestep_indices, parallel);
+            emission_value = get_component_from_tensor_train(model, timestep_indices, parallel);
         } else {
             // other parallelization options are not yet implemented
             println("Error: Not a valid parallelization option for forward message calculation.");
@@ -216,7 +216,7 @@ void calculate_emission_values(HMM model, vector<int>* evidence, int length, int
 
             // calculate the emission value and add it to the correct field in the array (startindex + offset)
             // fill the part of the total array which corresponds to the part of the emission sequence calculated in this thread
-            auto emission_value = get_component_from_tensor_train(model.emission_mps, timestep_indices, parallel);
+            auto emission_value = get_component_from_tensor_train(model, timestep_indices, parallel);
             emission_values[start * model.hiddenDimension + array_offest] = emission_value;
 
             // fill the next array field in the next loop

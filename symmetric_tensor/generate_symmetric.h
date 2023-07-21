@@ -10,6 +10,8 @@ itensor::ITensor generate_symmetric_odeco_tensor(int rank, int dim, Eigen::Matri
 
 itensor::MPS generate_symmetric_odeco_tensor_train(int rank, int dim);
 
+itensor::ITensor contract_tensor_train_parallel(itensor::MPS train, int length, int start);
+
 itensor::ITensor contract_tensor_train(itensor::MPS train);
 
 int test_generation();

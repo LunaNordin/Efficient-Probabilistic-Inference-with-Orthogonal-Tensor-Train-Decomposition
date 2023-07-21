@@ -145,6 +145,30 @@ MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
 }
 
 /**
+ * Contracts the specified section of a tensor train into the represented tensor
+ * train: tensor train to be contracted
+ * length: number of carriages to contract
+ * start: start: index of carriage to start at
+ * return: tensor represented by that section of the tensor train
+*/
+ITensor contract_tensor_train_parallel(MPS train, int length, int start) {
+    
+    // set output tensor to first tensor in the given section of the train
+    auto T = train.ref(start);
+
+    // contract length many carriages from the start point
+    for(int i = 0; i < length - 1; i++) {
+        // get the next carriage
+        auto S = train.ref(start + i + 1);
+
+        // automatically contract over the shared index
+        T *= S;
+    }
+    // return the contracted part of the tensor
+    return T;
+}
+
+/**
  * Contracts a tensor train into the represented tensor
  * train: tensor train to be contracted
  * return: tensor represented by the tensor train
