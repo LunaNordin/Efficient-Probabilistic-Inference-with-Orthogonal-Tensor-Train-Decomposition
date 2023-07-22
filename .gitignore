@@ -7,7 +7,7 @@
 # Unignore all dirs
 !*/
 
-*/eigen
+/eigen
 
 # Unignore Makefiles
 !Makefile
