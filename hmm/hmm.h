@@ -1,7 +1,7 @@
 #ifndef __HMM_H_
 #define __HMM_H_
 
-#include "itensor/all.h"
+#include "../itensor/itensor/all.h"
 #include "../symmetric_tensor/generate_symmetric.h"
 #include <random>
 #include <vector>

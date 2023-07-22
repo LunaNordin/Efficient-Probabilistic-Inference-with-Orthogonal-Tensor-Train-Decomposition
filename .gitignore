@@ -1,13 +1,19 @@
-# Ignore all
+# Ignore everything
 *
 
-# Unignore all with extensions
+# Unignore all files with extensions (this leaves executables to be ignored)
 !*.*
 
 # Unignore all dirs
 !*/
 
-/eigen
+# Ignore eigen dependency but keep the directory and the readme
+/eigen/**
+!/eigen/README.md
+
+# Ignore itensor dependency but keep the directory and the readme
+/itensor/**
+!/itensor/README.md
 
 # Unignore Makefiles
 !Makefile
@@ -45,13 +51,13 @@
 *.out
 *.app
 
-# mac specific
+# Mac specific
 *.DS_Store
 
-# VSCode
+# Visual Studio Code
 *.vscode
 
-# measured performance data
+# Measured performance data should only be commited when located in the appropriate directory
 *.csv
 !/data_analysis/**/*.csv
 

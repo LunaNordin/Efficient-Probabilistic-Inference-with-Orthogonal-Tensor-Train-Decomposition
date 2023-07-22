@@ -3,7 +3,7 @@
 
 # 2. Edit LIBRARY_DIR to point at the location of your ITensor Library
 #    source folder (this is the folder that has options.mk in it)
-LIBRARY_DIR=../../itensor
+LIBRARY_DIR=../itensor
 
 EIGEN=../eigen
 

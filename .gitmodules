@@ -1,0 +1,4 @@
+[submodule "itensor"]
+	path = itensor
+	url = https://github.com/ITensor/ITensor
+	ignore = dirty

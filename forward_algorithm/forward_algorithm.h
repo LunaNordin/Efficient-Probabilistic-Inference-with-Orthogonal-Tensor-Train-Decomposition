@@ -1,7 +1,7 @@
 #ifndef __FORWARD_ALGORITHM_
 #define __FORWARD_ALGORITHM_
 
-#include "itensor/all.h"
+#include "../itensor/itensor/all.h"
 #include "../hmm/hmm.h"
 #include <iostream>
 #include <vector>

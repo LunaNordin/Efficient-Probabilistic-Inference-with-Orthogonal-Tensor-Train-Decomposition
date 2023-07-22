@@ -1,7 +1,7 @@
 #ifndef __GENERATE_SYMMETRIC_H_
 #define __GENERATE_SYMMETRIC_H_
 
-#include "itensor/all.h"
+#include "../itensor/itensor/all.h"
 #include <Eigen/Dense>
 
 Eigen::MatrixXf generate_orthogonal_set(int n, int m);
