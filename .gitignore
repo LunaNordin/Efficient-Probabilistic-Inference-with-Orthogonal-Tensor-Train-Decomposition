@@ -7,8 +7,7 @@
 # Unignore all dirs
 !*/
 
-# Unignore everything in the eigen library folder
-!/eigen/**
+*/eigen
 
 # Unignore Makefiles
 !Makefile
