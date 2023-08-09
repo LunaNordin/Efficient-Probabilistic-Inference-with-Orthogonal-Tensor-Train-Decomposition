@@ -57,8 +57,7 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
 
     // use the absolute value to shift value range from [-1,1] to [0,1]
     // this does not change the odeco symmetric properties of the tensor
-    auto abs = [](Real r) { return std::abs(r); };
-    T.apply(abs);
+    T.apply(tensor_abs);
 
     // return the output
     return T;

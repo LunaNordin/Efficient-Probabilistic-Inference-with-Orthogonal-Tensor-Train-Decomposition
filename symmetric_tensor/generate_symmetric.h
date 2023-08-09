@@ -4,6 +4,8 @@
 #include "../itensor/itensor/all.h"
 #include <Eigen/Dense>
 
+auto tensor_abs = [](itensor::Real r) { return std::abs(r);};
+
 Eigen::MatrixXf generate_orthogonal_set(int n, int m);
 
 itensor::ITensor generate_symmetric_odeco_tensor(int rank, int dim, Eigen::MatrixXf eigenvec);

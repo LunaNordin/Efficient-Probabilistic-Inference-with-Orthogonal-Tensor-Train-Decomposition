@@ -23,4 +23,6 @@ float standard_mean_error(float data[], int n);
 
 std::string parallel_to_string(ParallelizationOpt parallel);
 
+void test_parallelized_implementations();
+
 #endif

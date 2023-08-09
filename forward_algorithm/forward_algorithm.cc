@@ -19,18 +19,14 @@ ITensor forward_alg(HMM model, vector<int>* evidence, int length, model_mode mod
     ITensor joint_hidden_probability;   // ITensor containing the calculated probability for the last timestep
 
     // decide what to do based on chosen representation and parallelization options
-    if(mode == both_models) {
-        // the algorithm always uses one specified model representation
-        println("Error: Forward algorithm can only be executed on one representation at a time.");
-        return ITensor();
-    } else if(mode == tensor && parallel.mode != sequential) {
+    if(mode == tensor && parallel.mode != sequential) {
         // only calculations on mps representations can be parallelized
         println("Error: There is no parallelization available for tensor representation..");
         return ITensor();
     } else if(parallel.mode == sequential || parallel.mode == parallel_contraction){
         // use the implementation of the forward algorithm with integrated calculation/retrieval of emission values
         joint_hidden_probability = calculate_forward_message(model, evidence, length, mode, parallel, nullptr);
-    } else if(mode == mps && parallel.mode == parallel_evidence) {
+    } else if((mode == mps || mode == both_models) && (parallel.mode == parallel_evidence || parallel.mode == both_parallel)) {
         // use the implementation of the forward algorithm with parallelized evidence sequence calculation upfront
         // pre-calculate the emission values
         double* emission_values = calculate_emission_values_parallel(model, evidence, length, parallel);
@@ -107,7 +103,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
                 println("Error: Not a valid mode for forward message calculation.");
                 return ITensor();
             }
-        } else if(parallel.mode == parallel_evidence) {
+        } else if(parallel.mode == parallel_evidence || parallel.mode == both_parallel) {
             // the emission values have been pre-calculated in parallel and can be simply accessed
             emission_value = emission_values[(timestep - 1) * model.hiddenDimension + (hidden_index - 1)];
         } else if(parallel.mode == parallel_contraction) {
@@ -133,10 +129,13 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
         // calculate and add the forward message for the current hidden state to the array
         alpha_t.set(hidden_index, emission_value * sum);
     }
+    
+    // normalize values to actual probabilities, to prevent values going towards 0 in long evidence sequences
+    auto sum = sumels(alpha_t);
+    alpha_t = alpha_t / sum;
+
     // return the forward message for usage in the next timestep
     return alpha_t;
-    // alternative to prevent "probabilities" of hidden states to go torwards 0 because the data is random and not actual probabilities
-    // return alpha_t * 10;
 }
 
 /**
@@ -161,7 +160,6 @@ double* calculate_emission_values_parallel(HMM model, vector<int>* evidence, int
         int length = end - start + 1;
         // create a thread to calculate all emission values for that part of the sequence
         threads[i] = thread(calculate_emission_values, model, evidence, length, start, emission_values, parallel);
-        threads[i].join();
     }
 
     // wait until all threads have finished
@@ -417,6 +415,83 @@ string parallel_to_string(ParallelizationOpt parallel)
     }
 }
 
+/**
+ * Calculates result of forward algorithm on one data point and compares results of different implementations.
+ * Prints out error message if an implementation gives a different result than the one from original forward algorithm.
+*/
+void test_parallelized_implementations() {
+    
+    int length = 50;                // length of evidence sequences used
+    double max_diff = 1.0e-8;       // maximum allowed difference between results
+
+    // compare results of three different ranks (tensor representaions have to be viable to keep in memory)
+    for(int rank = 4; rank <= 6; rank++) {
+        cout << "Checking similarity of implementation results for rank " << rank << endl;
+        // compare results of nineteen different dimensions (tensor representaions have to be viable to keep in memory)
+        for(int dimension = 2; dimension <= 20; dimension++) {
+            for(int repetitions = 0; repetitions < 2; repetitions++) {
+                // genarate a model containing both mps and tensor representations
+                HMM model = generate_hmm(dimension, rank-1, dimension, both_models);
+                // generate an evidence sequence
+                vector<int>* evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
+
+                // let all different implementations of the algorithm run on the same model and evidence
+                ITensor reference_result = forward_alg(model, evidence, length, tensor, ParallelizationOpt(sequential));
+                ITensor mps_sequential_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(sequential));
+                ITensor mps_parallel_evidence_2_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(parallel_evidence, 2));
+                ITensor mps_parallel_evidence_4_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(parallel_evidence, 4));
+                ITensor mps_parallel_contraction_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(parallel_contraction));
+                ITensor mps_both_parallel_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(both_parallel, 2));
+
+                // use on common index for all result tensors
+                mps_sequential_result.replaceInds(mps_sequential_result.inds(), reference_result.inds());
+                mps_parallel_evidence_2_result.replaceInds(mps_parallel_evidence_2_result.inds(), reference_result.inds());
+                mps_parallel_evidence_4_result.replaceInds(mps_parallel_evidence_4_result.inds(), reference_result.inds());
+                mps_parallel_contraction_result.replaceInds(mps_parallel_contraction_result.inds(), reference_result.inds());
+                mps_both_parallel_result.replaceInds(mps_both_parallel_result.inds(), reference_result.inds());
+
+                /*  Calculate difference between result from implementation with tensor and the implementations with different optimizations
+                    The results of all implementations should be identical. Any differences hint at errors on the implementation.*/
+
+                // make sure sequential mps result is the same as tensor result
+                ITensor mps_sequential_diff_tensor = reference_result - mps_sequential_result;
+                double mps_sequential_diff = sumels(mps_sequential_diff_tensor.apply(tensor_abs));
+                if(mps_sequential_diff > max_diff) {
+                    cout << "Error: Result from mps sequential forward message deviated from reference by "  << mps_sequential_diff << " at " << rank << " dimension " << dimension << endl;
+                }
+
+                // make sure parallel evidence mps result with two threads is the same as tensor result
+                ITensor mps_parallel_evidence_2_diff_tensor = reference_result - mps_parallel_evidence_2_result;
+                double mps_parallel_evidence_2_diff = sumels(mps_parallel_evidence_2_diff_tensor.apply(tensor_abs));
+                if(mps_parallel_evidence_2_diff > max_diff) {
+                    cout << "Error: Result from mps parallel evidence 2 threads forward message deviated from reference by "  << mps_parallel_evidence_2_diff << " at " << rank << " dimension " << dimension << endl;
+                }
+
+                // make sure parallel evidence mps result with four threads is the same as tensor result
+                ITensor mps_parallel_evidence_4_diff_tensor = reference_result - mps_parallel_evidence_4_result;
+                double mps_parallel_evidence_4_diff = sumels(mps_parallel_evidence_4_diff_tensor.apply(tensor_abs));
+                if(mps_parallel_evidence_4_diff > max_diff) {
+                    cout << "Error: Result from mps sequential forward message deviated from reference by "  << mps_parallel_evidence_4_diff << " at " << rank << " dimension " << dimension << endl;
+                }
+
+                // make sure parallel contraction mps result is the same as tensor result
+                ITensor mps_parallel_contraction_diff_tensor = reference_result - mps_parallel_contraction_result;
+                double mps_parallel_contraction_diff = sumels(mps_parallel_contraction_diff_tensor.apply(tensor_abs));
+                if(mps_parallel_contraction_diff > max_diff) {
+                    cout << "Error: Result from mps sequential forward message deviated from reference by "  << mps_parallel_contraction_diff << " at " << rank << " dimension " << dimension << endl;
+                }
+
+                // make sure double parallelized mps result is the same as tensor result
+                ITensor mps_both_parallel_diff_tensor = reference_result - mps_both_parallel_result;
+                double mps_both_parallel_diff = sumels(mps_both_parallel_diff_tensor.apply(tensor_abs));
+                if(mps_both_parallel_diff > max_diff) {
+                    cout << "Error: Result from mps sequential forward message deviated from reference by "  << mps_both_parallel_diff << " at " << rank << " dimension " << dimension << endl;
+                }
+            }
+        }
+    }
+}
+
 int main() {
 
     /**
@@ -457,7 +532,7 @@ int main() {
     // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, tensor, ParallelizationOpt(sequential));
 
     // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train, no_parallelization
-    collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(sequential));
+    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(sequential));
 
     // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train, parallel_evidence: 2 threads
     // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(parallel_evidence, 2));
@@ -467,6 +542,7 @@ int main() {
 
     // test_generation();
     // test_hmm();
+    test_parallelized_implementations();
 
     return 0;
 }
