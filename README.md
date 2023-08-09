@@ -11,10 +11,10 @@ Install both libraries in their own directories named "itensor" and "eigen" resp
     |─ gitlab_folder  
     │ &emsp;&emsp;&emsp;  |─ data_analysis   
     │ &emsp;&emsp;&emsp;  |─ eigen   
-    │ &emsp;&emsp;&emsp;  |─ forward_algorithm
+    │ &emsp;&emsp;&emsp;  |─ forward_algorithm  
     │ &emsp;&emsp;&emsp;  |─ hmm      
     │ &emsp;&emsp;&emsp;  |─ itensor   
-    │ &emsp;&emsp;&emsp;  |─ lapack_version
+    │ &emsp;&emsp;&emsp;  |─ lapack_version  
     │ &emsp;&emsp;&emsp;  |─ symmetric_tensor      
     │ &emsp;&emsp;&nbsp;&nbsp; └─...   
 

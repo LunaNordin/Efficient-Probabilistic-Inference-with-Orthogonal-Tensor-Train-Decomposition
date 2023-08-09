@@ -18,8 +18,6 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
     // create tensor for output
     auto T = ITensor();
 
-    // TODO: make sure the matrix of eigenvectors fits the rank and dimension of the generated vector
-
     // sum over all additive parts
     for(int n=1; n <= rank; n++) {
         // get the n-th eigenvector from the matrix
@@ -57,6 +55,11 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
     // remove unused prime for better readablilty (indices are now distinguished by tags)
     T = noPrime(T);
 
+    // use the absolute value to shift value range from [-1,1] to [0,1]
+    // this does not change the odeco symmetric properties of the tensor
+    auto abs = [](Real r) { return std::abs(r); };
+    T.apply(abs);
+
     // return the output
     return T;
 }
@@ -68,14 +71,20 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
  * return: matrix with m orthogonal, n-dimensional vectors as columns
 */
 MatrixXf generate_orthogonal_set(int n, int m) {
+
+    // set up generator for random matrix
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dis(-1.0, 1.0);
     
     // generate a random nxm matrix
-    MatrixXf M = MatrixXf::Random(n,m);
+    Eigen::MatrixXf M = Eigen::MatrixXf::NullaryExpr(n,m,[&](){return dis(gen);});
     // perform QR decomposition using householder
     Eigen::FullPivHouseholderQR<MatrixXf> QR(M.rows(), M.cols());
     QR.compute(M);
     // get orthonormal matrix from decomposition
     MatrixXf Q = QR.matrixQ();
+
     // test matrix for orthogonality
     MatrixXf Q_t = Q.transpose();
     MatrixXf I = Q*Q_t;
@@ -83,11 +92,6 @@ MatrixXf generate_orthogonal_set(int n, int m) {
         println("ERROR: Generated orthogonal matrix with high numeric error.");
         return MatrixXf();
     }
-
-    // TODO: add multiplication with random factors to generate tensors with values outside [0,1]
-
-    // shift from generated range of [-1,1] to [0,1] for working with probabilities
-    Q = Q.cwiseAbs();
 
     // return the genrated matrix
     return Q;
@@ -101,9 +105,6 @@ MatrixXf generate_orthogonal_set(int n, int m) {
 */
 MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
 
-    // iniitalize random number generation
-    srand((unsigned int) time(0));
-
     // initialise an empty train for rank - 2 many carriages
     auto train = MPS(rank - 2);
 
@@ -113,8 +114,13 @@ MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
 
     // generate each carriage
     for(int i=1; i <= rank - 2; i++) {
-        // create an symmetric, odeco tensor
-        MatrixXf base = generate_orthogonal_set(dim, rank - 2);
+        // create a symmetric, odeco tensor
+        MatrixXf base;  // orthogonal matrix to create tensor from
+        if (dim < 3) {  // because rank of carriages is 3, the matrix needs at least 3 columns
+            base = generate_orthogonal_set(3, 3);
+        } else {
+            base = generate_orthogonal_set(dim, dim);
+        }
         auto carriage = generate_symmetric_odeco_tensor(3, dim, base);
 
         // find the indices of the carriages marked as bonds
@@ -196,9 +202,6 @@ ITensor contract_tensor_train(MPS train) {
  * Used to test the generation of symmetric tensors and tensor trains
 */
 int test_generation(){
-
-    // initialize seed for random number generation
-    srand((unsigned int) time(0));
 
     // println("Test with known eigenvectors:");
     // /**
