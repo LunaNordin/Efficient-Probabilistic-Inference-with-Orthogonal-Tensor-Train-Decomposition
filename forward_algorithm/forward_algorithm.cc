@@ -499,31 +499,34 @@ int main() {
     */
     // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor, no_parallelization
     // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, tensor, ParallelizationOpt(sequential));
-    // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor, no_parallelization
-    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, tensor, ParallelizationOpt(sequential));
+    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor, no_parallelization
+    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, tensor, ParallelizationOpt(sequential));
 
     // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, no_parallelization
     // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(sequential));
-    // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor train, no_parallelization
-    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, mps, ParallelizationOpt(sequential));
+    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, no_parallelization
+    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(sequential));
 
     // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 2 threads
     // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 2));
-    // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor train, parallel_evidence: 2 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, mps, ParallelizationOpt(parallel_evidence, 2));
+    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 2 threads
+    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 2));
     // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 4 threads
     // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 4));
-    // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor train, parallel_evidence: 4 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, mps, ParallelizationOpt(parallel_evidence, 4));
+    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 4 threads
+    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 4));
     // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 8 threads
     // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 8));
-    // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor train, parallel_evidence: 8 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, mps, ParallelizationOpt(parallel_evidence, 8));
+    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 8 threads
+    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 8));
 
     // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_contraction
     // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_contraction));
-    // rank 4-10, dimension: 2-100, sequence_length: 500, repetitions: 10, used_model: tensor train, parallel_contraction
-    // collect_data_forward_algorithm(4, 10, 2, 100, 500, 10, mps, ParallelizationOpt(parallel_contraction));
+    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_contraction
+    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_contraction));
+
+    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
+    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 8));
 
     /**
      * Quick testing to try stuff out
@@ -542,7 +545,7 @@ int main() {
 
     // test_generation();
     // test_hmm();
-    test_parallelized_implementations();
+    // test_parallelized_implementations();
 
     return 0;
 }
