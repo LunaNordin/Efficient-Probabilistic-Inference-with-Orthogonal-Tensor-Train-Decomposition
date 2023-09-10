@@ -19,11 +19,11 @@ ITensor forward_alg(HMM model, vector<int>* evidence, int length, model_mode mod
     ITensor joint_hidden_probability;   // ITensor containing the calculated probability for the last timestep
 
     // decide what to do based on chosen representation and parallelization options
-    if(mode == tensor && parallel.mode != sequential) {
+    if(mode == tensor && parallel.mode != no_parallel) {
         // only calculations on mps representations can be parallelized
-        println("Error: There is no parallelization available for tensor representation..");
+        println("Error: There is no parallelization available for tensor representation.");
         return ITensor();
-    } else if(parallel.mode == sequential || parallel.mode == parallel_contraction){
+    } else if(parallel.mode == no_parallel || parallel.mode == parallel_contraction){
         // use the implementation of the forward algorithm with integrated calculation/retrieval of emission values
         joint_hidden_probability = calculate_forward_message(model, evidence, length, mode, parallel, nullptr);
     } else if((mode == mps || mode == both_models) && (parallel.mode == parallel_evidence || parallel.mode == both_parallel)) {
@@ -32,20 +32,21 @@ ITensor forward_alg(HMM model, vector<int>* evidence, int length, model_mode mod
         double* emission_values = calculate_emission_values_parallel(model, evidence, length, parallel);
         // start the forward algorithm running on the pre-calculated emission values
         joint_hidden_probability = calculate_forward_message(model, evidence, length, mode, parallel, emission_values);
-        // free the memory used for the array with emission values
+        // free the memory used by the array with emission values
         delete emission_values;
     } else {
+        // currently unsupported combination of parameters
         println("Info: Not yet implemented.");
         return ITensor();
     }
-
+    // return the probabilities calculated for each hidden state
     return joint_hidden_probability;
 }
 
 /**
  * Recursively calculates the state probabilities of the hidden variable for the given evidence using forward messages
  * model: model to perform the forward algorithm on
- * evidence: sequence of states
+ * evidence: sequence of observed states
  * timestep: current step in the evidence sequence
  * mode: which representation of the emission tensor to use
  * parallel: options for parallelization
@@ -59,7 +60,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
         // if the calculation of the evidence values is supposed to be parallel, the values have to be calculated upfront and provided as an array
         println("Error: Parallelized calculation of emission values has to be done upfront and passed to this method.");
         return ITensor();
-    } else if(parallel.mode == sequential && emission_values) {
+    } else if(parallel.mode == no_parallel && emission_values) {
         // if the emission values are calculated on demand it does not make sense to provide pre-calculated values
         println("Warning: Pre-calculated emission values will not be used in this non-parallelized mode.");
     }
@@ -67,7 +68,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
     auto i = Index(model.hiddenDimension);
     ITensor alpha_t = ITensor(i);           // array (rank-1 tensor) of forward messages which will be used in the next timestep (t+1)
     float emission_value;                   // value from the emission tensor for the current evidence and one hidden state
-    float transition_value;                 // value from the transition matrix for current hidden state and prior hidden state
+    float transition_value;                 // value from the transition matrix for the current hidden state and prior hidden state
 
     // recursion anker
     if(timestep == 0) {
@@ -77,10 +78,10 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
 
     // get the state of the visible variables for this timestep as an index list (all but the first index stay the same for this timestep)
     vector<int> timestep_indices = evidence[timestep - 1];
-    // add one element at the front of the vector for the index of the hidden varible (will be replaced for each hidden state)
+    // add one element at the front of the vector for the index of the hidden variable (will be replaced for each hidden state)
     timestep_indices.insert(timestep_indices.begin(), 0);
 
-    // revursive function call to calculate forward messages of prior timestep
+    // recursive function call to calculate forward messages of prior timestep
     ITensor alpha_prior = calculate_forward_message(model, evidence, timestep - 1, mode, parallel, emission_values);
     
     // calculate the forward message for all possible values of the hidden variable
@@ -89,7 +90,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
         timestep_indices.at(0) = hidden_index;
 
         // get the emission probability for the current visible state and hidden state
-        if(parallel.mode == sequential) {
+        if(parallel.mode == no_parallel) {
             // the algorithm is not parallelized so get/calculate the emission value from the given model now
 
             if(mode == tensor) {
@@ -118,10 +119,10 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
         // value for result of sub-calculation
         float sum = 0;
 
-        // use the messages for the prior timestep to calculate new forward message
+        // use the messages for the prior timestep to calculate the next forward message
         for(int prior_message_index = 1; prior_message_index <= model.hiddenDimension; prior_message_index++) {
             
-            // get transation value for current hidden state and prior hidden state
+            // get transition value for current hidden state and prior hidden state
             transition_value = elt(model.transition, hidden_index, prior_message_index);
             // add value for this combination of current and prior state to the sum
             sum += transition_value * elt(alpha_prior, prior_message_index);
@@ -139,9 +140,9 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
 }
 
 /**
- * Splits up the given evidence sequence into subsequences and calculates the emission values in parallel in the order they will be accessed by the forward algorithmin
+ * Splits up the given evidence sequence into subsequences and calculates the emission values in parallel in the order they will be accessed by the forward algorithm
  * model: model to perform the forward algorithm on
- * evidence: sequence of states
+ * evidence: sequence of observed states
  * length: length of the evidence sequence
  * parallel: options for parallelization
  * return: array of emission values in the order they will be accessed by the forward algorithm
@@ -149,7 +150,7 @@ ITensor calculate_forward_message(HMM model, vector<int>* evidence, int timestep
 double* calculate_emission_values_parallel(HMM model, vector<int>* evidence, int length, ParallelizationOpt parallel) {
 
     int num_threads = parallel.parallel_evidence_threads;
-    thread threads[num_threads];    // array containing the indiviual threads which will be working on parts of the evidence sequence
+    thread threads[num_threads];    // array containing the individual threads that will be working on parts of the evidence sequence
     double* emission_values = new double[length * model.hiddenDimension];   // array to store the calculated emission values
 
     // create a thread for each section of the evidence sequence
@@ -168,15 +169,15 @@ double* calculate_emission_values_parallel(HMM model, vector<int>* evidence, int
         threads[i].join();
     }
     
-    // return the calculated emission values
+    // return the array of calculated emission values
     return emission_values;
 }
 
 /**
  * Calculates all emission values in a range of an evidence sequence which will be accessed by the forward algorithm on the given model
  * model: model to perform the forward algorithm on
- * evidence: sequence of states
- * start: index in evidence sequence where to begin calculation
+ * evidence: sequence of observed states
+ * start: index in evidence sequence at which to begin calculation
  * length: length of the state sequence for which the emission values are to be calculated
  * emission_values: array to be filled with emission values in the order they will be accessed by the forward algorithm
  * parallel: options for parallelization
@@ -194,14 +195,14 @@ void calculate_emission_values(HMM model, vector<int>* evidence, int length, int
         return;
     }
 
-    int array_offest = 0;   // number of fields which have been filled from the starting index in the array
+    int array_offest = 0;   // number of fields that have already been filled from the starting index in the array
 
-    // go thorugh the part of the evidence sequence assigned to this thread
+    // go through the part of the evidence sequence assigned to this thread
     for(int i = 0; i < length; i++) {
 
         // get the state of the visible variables for this timestep as an index list (all but the first index stay the same for this timestep)
         vector<int> timestep_indices = evidence[start + i];
-        // add one element at the front of the vector for the index of the hidden varible (will be replaced for each hidden state)
+        // add one element at the front of the vector for the index of the hidden variable (will be replaced for each hidden state)
         timestep_indices.insert(timestep_indices.begin(), 0);
 
         // the forward algorithm needs the emission values of each hidden variable state for each evidence
@@ -213,7 +214,7 @@ void calculate_emission_values(HMM model, vector<int>* evidence, int length, int
             // cout << start * model.hiddenDimension + array_offest << endl;
 
             // calculate the emission value and add it to the correct field in the array (startindex + offset)
-            // fill the part of the total array which corresponds to the part of the emission sequence calculated in this thread
+            // fill the part of the complete array that corresponds to the part of the emission sequence calculated in this thread
             auto emission_value = get_component_from_tensor_train(model, timestep_indices, parallel);
             emission_values[start * model.hiddenDimension + array_offest] = emission_value;
 
@@ -241,15 +242,19 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     vector<int>* evidence;
     ITensor a_posteriori_probabilities;
 
-    // create a new output files or open the existing ones
+    // create a new set of output files or open the existing ones
+    
+    // file for the mean runtimes
     ofstream fout_results;
     string time_file_name = "forward_algorithm_recursive_" + parallel_to_string(parallel) + "_" + mode_to_string(mode) + "_" + to_string(length) + ".csv";
     fout_results.open(time_file_name, ios::out | ios::app);
 
+    // file for the absolute uncertainty of the runtime mean
     ofstream fout_error;
     auto error_file_name = "forward_algorithm_recursive_" + parallel_to_string(parallel) + "_" + mode_to_string(mode) + "_" + to_string(length) + "_error" + ".csv";
     fout_error.open(error_file_name, ios::out | ios::app);
 
+    // file for the relative uncertainty
     ofstream fout_rel_error;
     auto rel_error_file_name = "forward_algorithm_recursive_" + parallel_to_string(parallel) + "_" + mode_to_string(mode) + "_" + to_string(length) + "_rel_error" + ".csv";
     fout_rel_error.open(rel_error_file_name, ios::out | ios::app);
@@ -262,7 +267,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     fout_rel_error << "model:" << mode_to_string(mode) << ",parallelization:" << parallel_to_string(parallel) << ",min_rank:" << min_rank << ",max_rank:" << max_rank << ",min_dimension:" << min_dimension
     << ",max_dimension:" << max_dimension << ",length:" << length << ",repetitions:" << repetitions << "\n";
 
-    // write header line with column titels for the dimensions to files
+    // write header line with column titles for the dimensions to files
     fout_results << ",";
     fout_error << ",";
     fout_rel_error << ",";
@@ -275,6 +280,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
     fout_error << "\n";
     fout_rel_error << "\n";
 
+    // print most important parameters to console
     cout << "Runtime testing for HMM " << parallel_to_string(parallel) << " forward algorithm on " << mode_to_string(mode) << " representation with evidence sequences of length " 
     << to_string(length) << " and " << to_string(repetitions) << " repetitions per run" << endl; 
 
@@ -285,12 +291,13 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
         fout_error << rank << ",";
         fout_rel_error << rank << ",";
 
+        // print to console that measurements for new rank have started
         cout << "Measuring runtime for tensors of rank: " << rank << endl; 
 
         // test all possible dimensions for the current rank
         for(int dimension = min_dimension; dimension <= max_dimension; dimension++) {
             
-            // if the combination of rank and dimension needs too much memors start testing the next rank
+            // if the combination of rank and dimension needs too much memory skip the remaining dimensions start testing the next rank
             int memory_usage = has_critical_memory_demand(rank, dimension, mode);
             if(memory_usage == 2) {
                 fout_results << "\n";
@@ -304,34 +311,34 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
 
             // repeat measurement with identical parameters
             for(int i = 0; i < repetitions; i++) {
-                // generate a new model which only contains the tested representation
+                // generate a new model which only contains the tested representation (either mps or tensor)
                 model = generate_hmm(dimension, rank-1, dimension, mode);
                 // generate a new evidence sequence
                 evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
 
-                // perform the algortihm while measuring the runtime
+                // perform the algorithm while measuring the runtime
                 auto t1 = high_resolution_clock::now();
                 a_posteriori_probabilities = forward_alg(model, evidence, length, mode, parallel);
                 auto t2 = high_resolution_clock::now();
 
-                // save the measured result
+                // save the measured runtime result
                 duration<double, std::milli> ms_double = t2 - t1;
                 results[i] = ms_double.count();
 
-                // clear all data structures of this run to make sure memory limit wont be exceeded
+                // clear all data structures from this run to make sure the memory limit will not be exceeded
                 delete[] evidence;
                 model = HMM();
                 a_posteriori_probabilities = ITensor();
                 
-                // experimental: give the system some time to clear the deallocated memory while this thread sleeps
+                // experimental: give the system some time to clear the deallocated memory while this thread sleeps if the model used a lot of memory
                 if(memory_usage == 1) {
                     sleep(1);
                 }
             }
 
-            // calculate mean of results
+            // calculate mean of runtime results
             float mean = arithmetic_mean(results, repetitions);
-            // claculate standard error of results
+            // claculate standard error of the mean
             float error = standard_mean_error(results, repetitions);
             // claculate relative error of results
             float rel_error = error / mean;
@@ -339,7 +346,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
             // print results to console
             cout << "dimension: " << dimension << " mean: " << mean << " error: " << error << " rel. error: " << rel_error << endl;
 
-            // write the measured runtime to the files
+            // write the measured runtime and uncertainties to the files
             fout_results << mean << "," << flush;
             fout_error << error << "," << flush;
             fout_rel_error << rel_error << "," << flush;
@@ -349,7 +356,7 @@ void collect_data_forward_algorithm(int min_rank, int max_rank, int min_dimensio
         fout_error << "\n";
         fout_rel_error << "\n";
     }
-    // in case the program runs twice without the files being reset the new values will just be written underneith
+    // in case the program runs twice without the files being reset the new values will just be written under the already existing ones, not over them
     fout_results << "\n";
     fout_error << "\n";
     fout_rel_error << "\n";
@@ -398,16 +405,16 @@ float standard_mean_error(float data[], int n) {
 }
 
 /**
- * Gives a string represenation for any parallelization_mode value
+ * Gives a string representation for any parallelization_mode value
  * parallel: options to be converted to string
  * return: options as a string
 */
 string parallel_to_string(ParallelizationOpt parallel)
 {
-    // TODO: replace this, its a maintenance nightmare
+    // TODO: replace this, it is a maintenance nightmare
     switch (parallel.mode)
     {
-        case sequential:                return "sequential";
+        case no_parallel:               return "no_parallel";
         case parallel_evidence:         return "parallel_evidence_" + to_string(parallel.parallel_evidence_threads) + "_threads";
         case parallel_contraction:      return "parallel_contraction";
         case both_parallel:             return "both_parallel";
@@ -416,7 +423,7 @@ string parallel_to_string(ParallelizationOpt parallel)
 }
 
 /**
- * Calculates result of forward algorithm on one data point and compares results of different implementations.
+ * Calculates result of forward algorithm on one data set and compares results of different implementations.
  * Prints out error message if an implementation gives a different result than the one from original forward algorithm.
 */
 void test_parallelized_implementations() {
@@ -424,26 +431,26 @@ void test_parallelized_implementations() {
     int length = 50;                // length of evidence sequences used
     double max_diff = 1.0e-8;       // maximum allowed difference between results
 
-    // compare results of three different ranks (tensor representaions have to be viable to keep in memory)
+    // compare results of three different ranks (tensor representations have to be viable to keep in memory)
     for(int rank = 4; rank <= 6; rank++) {
         cout << "Checking similarity of implementation results for rank " << rank << endl;
-        // compare results of nineteen different dimensions (tensor representaions have to be viable to keep in memory)
+        // compare results of nineteen different dimensions (tensor representations have to be viable to keep in memory)
         for(int dimension = 2; dimension <= 20; dimension++) {
             for(int repetitions = 0; repetitions < 2; repetitions++) {
-                // genarate a model containing both mps and tensor representations
+                // generate a model containing both mps and tensor representations
                 HMM model = generate_hmm(dimension, rank-1, dimension, both_models);
                 // generate an evidence sequence
                 vector<int>* evidence = generate_state_sequence(model.visibleVariables, model.visibleDimension, length);
 
                 // let all different implementations of the algorithm run on the same model and evidence
-                ITensor reference_result = forward_alg(model, evidence, length, tensor, ParallelizationOpt(sequential));
-                ITensor mps_sequential_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(sequential));
+                ITensor reference_result = forward_alg(model, evidence, length, tensor, ParallelizationOpt(no_parallel));
+                ITensor mps_sequential_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(no_parallel));
                 ITensor mps_parallel_evidence_2_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(parallel_evidence, 2));
                 ITensor mps_parallel_evidence_4_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(parallel_evidence, 4));
                 ITensor mps_parallel_contraction_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(parallel_contraction));
                 ITensor mps_both_parallel_result = forward_alg(model, evidence, length, mps, ParallelizationOpt(both_parallel, 2));
 
-                // use on common index for all result tensors
+                // use one common index for all result tensors
                 mps_sequential_result.replaceInds(mps_sequential_result.inds(), reference_result.inds());
                 mps_parallel_evidence_2_result.replaceInds(mps_parallel_evidence_2_result.inds(), reference_result.inds());
                 mps_parallel_evidence_4_result.replaceInds(mps_parallel_evidence_4_result.inds(), reference_result.inds());
@@ -451,7 +458,7 @@ void test_parallelized_implementations() {
                 mps_both_parallel_result.replaceInds(mps_both_parallel_result.inds(), reference_result.inds());
 
                 /*  Calculate difference between result from implementation with tensor and the implementations with different optimizations
-                    The results of all implementations should be identical. Any differences hint at errors on the implementation.*/
+                    The results of all implementations should be identical. Any differences hint at errors in the implementation.*/
 
                 // make sure sequential mps result is the same as tensor result
                 ITensor mps_sequential_diff_tensor = reference_result - mps_sequential_result;
@@ -497,56 +504,83 @@ int main() {
     /**
      * Thorough testing to gather data for analysis
     */
-    // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor, no_parallelization
-    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, tensor, ParallelizationOpt(sequential));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor, no_parallelization
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, tensor, ParallelizationOpt(sequential));
 
-    // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, no_parallelization
-    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(sequential));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, no_parallelization
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(sequential));
+    /* Evidence sequence length 400 (used for runtime measurements analyzed and discussed in thesis) */
+        // Sequential emission tensor:
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor, no_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, tensor, ParallelizationOpt(no_parallel));
 
-    // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 2 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 2));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 2 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 2));
-    // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 4 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 4));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 4 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 4));
-    // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 6 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 6));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 6 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 6));
-    // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 8 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 8));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 8 threads
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 8));
+        // Sequential emission tensor train:
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, no_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(no_parallel));
 
-    // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_contraction
-    // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_contraction));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_contraction
-    collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_contraction));
+        // Parallelized evidence incorporation:
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 2 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 2));
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 4 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 4));
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 6 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 6));
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_evidence: 8 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_evidence, 8));
 
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 2));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 4));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 6));
-    // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
-    // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 8));
+        // Parallelized tensor train contraction:
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, parallel_contraction
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(parallel_contraction));
+
+        // Combined parallelizations:
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 2));
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 4));
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 6));
+        // rank 4-10, dimension: 2-100, sequence_length: 400, repetitions: 10, used_model: tensor train, both_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 400, 10, mps, ParallelizationOpt(both_parallel, 8));
+
     
+    /* Evidence sequence length 100 (used for runtime measurements on slower hardware, used for MacBook Pro runs in thesis preparation) */
+        // Sequential emission tensor:
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor, no_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, tensor, ParallelizationOpt(no_parallel));
 
+        // Sequential emission tensor train:
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, no_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(no_parallel));
+        
+        // Parallelized evidence incorporation:
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 2 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 2));
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 4 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 4));
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 6 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 6));
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_evidence: 8 threads
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_evidence, 8));
+
+        // Parallelized tensor train contraction:
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, parallel_contraction
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(parallel_contraction));
+
+        // Combined parallelizations:
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, both_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(both_parallel, 2));
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, both_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(both_parallel, 6));
+        // rank 4-10, dimension: 2-100, sequence_length: 100, repetitions: 10, used_model: tensor train, both_parallel
+        // collect_data_forward_algorithm(4, 10, 2, 100, 100, 10, mps, ParallelizationOpt(both_parallel, 8));
+
+    
+    
     /**
-     * Quick testing to try stuff out
+     * Quick testing with very short runtimes to try stuff out
     */
-    // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor, no_parallelization
-    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, tensor, ParallelizationOpt(sequential));
 
-    // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train, no_parallelization
-    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(sequential));
+    // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor, no_parallel
+    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, tensor, ParallelizationOpt(no_parallel));
+
+    // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train, no_parallel
+    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(no_parallel));
 
     // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train, parallel_evidence: 2 threads
     // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(parallel_evidence, 2));
@@ -554,9 +588,12 @@ int main() {
     // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train, parallel_contraction
     // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(parallel_contraction));
 
+    // rank 4-5, dimension: 2-10, sequence_length: 10, repetitions: 3, used_model: tensor train, both_parallel
+    // collect_data_forward_algorithm(4, 5, 2, 10, 10, 3, mps, ParallelizationOpt(both_parallel, 2));
+
     // test_generation();
     // test_hmm();
-    // test_parallelized_implementations();
+    test_parallelized_implementations();
 
     return 0;
 }

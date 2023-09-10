@@ -4,7 +4,7 @@ extern ilaver_(int* major,int* minor,int* patch);
 
 /**
  * Determines the LAPACK library version used in C.
- * Use for debugging and solving problems with ITensor installs and other LAPACK dependents.
+ * Use for debugging, solving problems with ITensor installations, and other LAPACK dependents.
 */
 int main()
 {

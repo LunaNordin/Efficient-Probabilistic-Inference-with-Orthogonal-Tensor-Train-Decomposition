@@ -79,7 +79,7 @@ enum model_mode
 
 enum parallelization_mode
 {
-    sequential, parallel_evidence, parallel_contraction, both_parallel
+    no_parallel, parallel_evidence, parallel_contraction, both_parallel
 };
 
 class ParallelizationOpt {

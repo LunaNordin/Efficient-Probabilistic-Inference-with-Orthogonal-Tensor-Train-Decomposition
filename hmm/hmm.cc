@@ -4,12 +4,12 @@ using namespace itensor;
 using namespace std;
 
 /**
- * Generates a hidden markov model with specified dimensions and random values
+ * Generates a hidden Markov model with specified dimensions and random values
  * hiddenDim: dimension of the one hidden variable
  * visibleVariables: number of visible variables
  * visibleDim: dimension of all visible variables
  * mode: which representation of the emission tensor to use (saves memory space if certain representations are not needed)
- * return: HMM object with specified number of varibales and dimensions as well as random values in transition, emision and initial state
+ * return: HMM object with specified number of variables and dimensions as well as random values in transition, emission and initial state
 */
 HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim, model_mode mode) {
     // model to be filled with data
@@ -36,13 +36,13 @@ HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim, model_mode
         model.emission_mps = emission_mps;
     }
 
-    // set the tensor representation if it is required
+    // calculate and set the tensor representation if it is required
     if(mode == tensor || mode == both_models) {
         // contract that tensor train and also save the contracted emission tensor
         model.emission_tensor = contract_tensor_train(emission_mps);
     }
 
-    // add the initial state to the model
+    // generate the initial state probabilities of the model
     model.initial_state = generate_state(visibleVariables, visibleDim); 
     // add the initial probabilities of the hidden variable
     auto l = Index(hiddenDim);
@@ -57,13 +57,13 @@ HMM generate_hmm(int hiddenDim, int visibleVariables, int visibleDim, model_mode
  * visibleVariables: Number of values in each state
  * visibleDim: value range of each state component
  * length: number of generated states
- * return: array of states in form of vektors
+ * return: array of states in form of vectors
 */
 vector<int>* generate_state_sequence(int visibleVariables, int visibleDim, int length) {
     // set up an array of vectors to hold the state sequence
     vector<int>* sequence = new vector<int>[length];
 
-    // generate lenght many states
+    // generate length many states
     for (int i = 1; i <= length; i++) {
         // generate a random state
         vector<int> state = generate_state(visibleVariables, visibleDim);
@@ -89,7 +89,7 @@ vector<int> generate_state(int visibleVariables, int visibleDim) {
     // create a vector for the state
     vector<int> state;
 
-    // fill the state vector with random values from the dimension value range
+    // fill the state vector with random values from the dimensions value range
     for (int j = 1; j <= visibleVariables; j++) {
         auto random = uni(rng);
         state.push_back(random);
@@ -99,11 +99,11 @@ vector<int> generate_state(int visibleVariables, int visibleDim) {
 }
 
 /**
- * Calculates estimated memory usage for the representation of an HMM and reports if it can be stored in system memory
+ * Calculates estimated memory usage of the representation of an HMM and reports if it can be stored in system memory
  * total_variables: total number of variables (hidden and visible)
  * dimension: dimension of the variables
  * mode: which representation of the emission tensor is used
- * return: 1 if representation exceeds memory limit, 1 if its greater than 75%, 0 else
+ * return: 1 if representation exceeds memory limit, 1 if it is greater than 75%, 0 else
 */
 int has_critical_memory_demand(int total_variables, int dimension, model_mode mode) {
     float system_memory = 12.0;
@@ -118,7 +118,7 @@ int has_critical_memory_demand(int total_variables, int dimension, model_mode mo
     // size in GB of the mps
     float train_size_gigabytes = train_size_bytes / float(pow(10, 9));
 
-    // total size of mps
+    // total size of HMM
     float total_size = 0;
     if(mode == mps) {
         total_size = train_size_gigabytes;
@@ -130,13 +130,13 @@ int has_critical_memory_demand(int total_variables, int dimension, model_mode mo
         
     // return if system memory is sufficient
     if(total_size >= system_memory) {
-        // size is greater than system memory
+        // size of model is greater than system memory
         return 2;
     } else if (total_size >= system_memory * 0.75){
-        // size is smaller than system memory but at least 75% of system memory
+        // size of HMM is smaller than system memory but at least 75% of system memory
         return 1;
     } else {
-        // size is smaller than system memory
+        // size of HMM is smaller than 75% of system memory
         return 0;
     }
 }
@@ -149,12 +149,11 @@ int has_critical_memory_demand(int total_variables, int dimension, model_mode mo
  * return: component corresponding to the given indices
 */
 Real get_component_from_tensor_train(HMM model, vector<int> evidence, ParallelizationOpt parallel) {
-    // TODO: make sure length of evidence sequence matches number of visible variables in train
     
-    ITensor component;  // tensor which will contain the calculated emission value
+    ITensor component;  // tensor that will contain the calculated emission value
     
     // absorb the evidence by removing all non-fitting fields from the mps
-    if(parallel.mode == sequential || parallel.mode == parallel_evidence) {
+    if(parallel.mode == no_parallel || parallel.mode == parallel_evidence) {
         // no parallelization of evidence absorption
         absorb_evidence(model, evidence, length(model.emission_mps), 1);
 
@@ -163,10 +162,10 @@ Real get_component_from_tensor_train(HMM model, vector<int> evidence, Paralleliz
     } else if(parallel.mode == parallel_contraction || parallel.mode == both_parallel) {
         // split absorption of evidence into two threads
         
-        // split length of mps into two halfs
+        // split length of mps into two parts
         int length_1 = length(model.emission_mps) / 2;
         int length_2 = length(model.emission_mps) - length_1;
-        // calculate start points for each of the threads
+        // calculate start point for each of the threads
         int start_1 = 1;
         int start_2 = length_1 + 1;
         // start two threads, each of which will absorb the evidence in half of the carriages
@@ -175,17 +174,17 @@ Real get_component_from_tensor_train(HMM model, vector<int> evidence, Paralleliz
         // wait until both threads have finished running
         th1.join();
         th2.join();
-        // start two threads that each multiply the carriage in one half of the train
+        // start two threads that each multiply the carriages in one half of the train
         auto contract_left_future = std::async(contract_tensor_train_parallel, model.emission_mps, length_1, start_1);
         auto contract_right_future = std::async(contract_tensor_train_parallel, model.emission_mps, length_2, start_2);
         // wait for both threads to return their results
         auto contract_left = contract_left_future.get();
         auto contract_right = contract_right_future.get();
-        // multiply the two contracted halfs to calculate the emission value
+        // multiply the two contracted parts to calculate the emission value
         component = contract_left * contract_right;
     }
     
-    // return the single value from the rank-0 tensor
+    // return the single value from the rank-0 result tensor
     return component.elt();
 }
 
@@ -201,12 +200,12 @@ Real get_component_from_tensor_train_with_check(HMM model, vector<int> evidence,
     double max_error = 0.00001;
     // calculate component from MPS
     auto component = get_component_from_tensor_train(model, evidence, parallel);
-    // get expected component from tensor
+    // get expected component directly from tensor
     auto control = elt(model.emission_tensor, evidence);
-    // make sure the two are identical (within expected accuracy)
+    // make sure the two values are identical (within expected accuracy)
     if(abs(component - control) > max_error) {
-        // infrom user about deviation and return error value
-        println("Error: Component calculated from MPS representation does not match tensor component");
+        // inform user about deviation and return error value
+        println("Error: Component calculated from MPS representation does not match expected tensor component.");
         return -1;
     }
 
@@ -222,7 +221,7 @@ Real get_component_from_tensor_train_with_check(HMM model, vector<int> evidence,
  * start: index of carriage to start at
 */
 void absorb_evidence(HMM& model, vector<int> evidence, int length, int start) {
-    // absorb the evidence in every carraige of the train
+    // absorb the evidence in every carriage of the train
     for(int i = 0; i < length; i++) {
 
         ITensor prev_carriage;          // carriage at position before the current carriage in the train
@@ -292,19 +291,19 @@ void absorb_evidence(HMM& model, vector<int> evidence, int length, int start) {
                 new_carriage.set(bond_1 = j, field);
             }
         }
-        // replace the old carrige with the new carriage which has the evidence absorbed
+        // replace the old carriage with the new carriage which has the evidence absorbed
         model.setTrainCarriage(start + i, new_carriage);
     }
 }
 
 /**
- * Gives a string represenation for any model_mode value
+ * Gives a string representaion for any model_mode value
  * mode: mode to be converted to string
  * return: name of the mode as a string
 */
 string mode_to_string(model_mode mode)
 {
-    // TODO: replace this, its a maintenance nightmare
+    // TODO: replace this, it is a maintenance nightmare
     switch (mode)
     {
         case tensor:            return "tensor";
@@ -350,12 +349,12 @@ int test_hmm() {
 
     println("Get random component from train:");
     auto rand_state = generate_state(model.visibleVariables + 1, model.visibleDimension);
-    auto component = get_component_from_tensor_train(model, rand_state, ParallelizationOpt(sequential));
+    auto component = get_component_from_tensor_train(model, rand_state, ParallelizationOpt(no_parallel));
     print("Calculated from MPS: ");
     println(component);
     print("Taken from tensor: ");
     println(elt(model.emission_tensor, rand_state));
-    get_component_from_tensor_train_with_check(model, rand_state, ParallelizationOpt(sequential));
+    get_component_from_tensor_train_with_check(model, rand_state, ParallelizationOpt(no_parallel));
 
     return 0;
 }

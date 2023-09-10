@@ -24,7 +24,7 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
         auto vec = eigenvec.col(n-1);
         // copy the values from the vector into the rank-1 tensor
         for(int o=1; o <= dim; o++) {
-            A_i.set(i=o, vec(o-1)); // note that Eigen indices start at 0 while iTensor indices start at 1
+            A_i.set(i=o, vec(o-1)); // note that Eigen indices start at 0 while ITensor indices start at 1
         }
 
         // perfrom rank many tensor eigenproducts of eigenvector A_i
@@ -46,13 +46,13 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
     // add a "visible" tag to all remaining indices
     for(int p=1; p <= rank-1; p++) {
         a = prime(a);
-        // add a number to each visible indice to distinguish them
+        // add a number to each visible index to distinguish them
         std::string tag = "visible";
         tag += std::to_string(p);
         T = addTags(T, tag, a);
     }
 
-    // remove unused prime for better readablilty (indices are now distinguished by tags)
+    // remove unused prime for better readability (indices are now distinguished by tags)
     T = noPrime(T);
 
     // use the absolute value to shift value range from [-1,1] to [0,1]
@@ -64,7 +64,7 @@ ITensor generate_symmetric_odeco_tensor(int rank, int dim, MatrixXf eigenvec) {
 }
 
 /**
- * Generates set of orthogonal vectors with specified dimesion using houser QR decomposition
+ * Generates set of orthogonal vectors with specified dimension using houser QR decomposition
  * n: number of rows (dimension of generated orthogonal vectors)
  * m: number of columns (number of generated orthogonal vectors)
  * return: matrix with m orthogonal, n-dimensional vectors as columns
@@ -92,7 +92,7 @@ MatrixXf generate_orthogonal_set(int n, int m) {
         return MatrixXf();
     }
 
-    // return the genrated matrix
+    // return the generated matrix
     return Q;
 }
 
@@ -104,7 +104,7 @@ MatrixXf generate_orthogonal_set(int n, int m) {
 */
 MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
 
-    // initialise an empty train for rank - 2 many carriages
+    // initialize an empty train for rank - 2 many carriages
     auto train = MPS(rank - 2);
 
     // indices used to connect the carriages of the train
@@ -126,8 +126,8 @@ MPS generate_symmetric_odeco_tensor_train(int rank, int dim) {
         auto old_bond_1 = findIndex(carriage,"bond1");
         auto old_bond_2 = findIndex(carriage,"bond2");
 
-        // replace the indices with new ones which are not identical and untagged
-        // this makes sure each carriage shares one index with each of its neighbours
+        // replace the indices with new ones that are not identical and untagged
+        // this makes sure each carriage shares one index with each of its neighbors
         carriage = replaceInds(carriage,{old_bond_1, old_bond_2},{bond_1, bond_2});
         
         // the carriages at the end of the train only share one bond but have two visible indices
