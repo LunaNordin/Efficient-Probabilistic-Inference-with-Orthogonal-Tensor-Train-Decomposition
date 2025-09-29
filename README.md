@@ -1,7 +1,7 @@
 
 
 # Efficient Probabilistic Inference with Orthogonal Tensor Train Decomposition
-This repository contains the implementation used to gather runtime data as well as the data analysis for the accompanying bachelor thesis paper "Efficient Probabilistic Inference with Orthogonal Tensor Train Decomposition" written by Frederik Schittny. This readme file explains how to setup the implementation and how to execute the code to recreate the runtime measurements describe in the thesis.
+This repository contains the implementation used to gather runtime data as well as the data analysis for the accompanying bachelor thesis paper "Efficient Probabilistic Inference with Orthogonal Tensor Train Decomposition" written by Frederik Schittny. The full PDF version of the thesis is available [here](https://github.com/LunaNordin/Efficient-Probabilistic-Inference-with-Orthogonal-Tensor-Train-Decomposition/blob/main/Efficient%20Probabilistic%20Inference%20with%20Orthogonal%20Tensor%20Train%20Decomposition.pdf). This readme file explains how to setup the implementation and how to execute the code to recreate the runtime measurements describe in the thesis.
 
 ## Setup and installation
 In order to use the scripts provided in this repository you have to install the ITensor and Eigen C++ libraries after you cloned this repository. To avoid platform specific problems you have to add the libraries yourself. The project structure allready includes the folders "itensor" and "eigen" for the dependencies, which only have to be filled with the dependency files:.  
